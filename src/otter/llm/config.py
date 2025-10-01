@@ -72,33 +72,41 @@ class LLMConfig:
         """Get default provider configurations.
         
         Covers major providers with their respective API key environment variables.
+        Model identifiers are current as of October 2024.
+        
+        To verify/update model identifiers:
+        - Run: make doppler-run CMD="uv run python scripts/validate_claude_4_models.py"
+        - Check official docs:
+          • Anthropic: https://docs.anthropic.com/en/docs/about-claude/models
+          • OpenAI: https://platform.openai.com/docs/models
+          • Google: https://ai.google.dev/models/gemini
         """
         return {
             "anthropic": ProviderConfig(
                 name="anthropic",
                 api_key_env="ANTHROPIC_API_KEY",
                 models={
-                    ModelTier.FAST: "claude-3-haiku-20240307",
-                    ModelTier.CAPABLE: "claude-3-5-sonnet-20241022",
-                    ModelTier.ADVANCED: "claude-3-5-sonnet-20241022",
+                    ModelTier.FAST: "claude-3-5-haiku-20241022",  # Haiku 3.5 (Oct 2024) - fast & affordable
+                    ModelTier.CAPABLE: "claude-sonnet-4-5-20250929",  # Sonnet 4.5 (Sept 2025) - best balance
+                    ModelTier.ADVANCED: "claude-opus-4-1-20250805",  # Opus 4.1 (Aug 2025) - most capable
                 }
             ),
             "openai": ProviderConfig(
                 name="openai",
                 api_key_env="OPENAI_API_KEY",
                 models={
-                    ModelTier.FAST: "gpt-4o-mini",
-                    ModelTier.CAPABLE: "gpt-4o",
-                    ModelTier.ADVANCED: "gpt-4o",
+                    ModelTier.FAST: "gpt-4o-mini",  # Fast and affordable
+                    ModelTier.CAPABLE: "gpt-4o",  # Latest GPT-4 Omni
+                    ModelTier.ADVANCED: "o1",  # Advanced reasoning model
                 }
             ),
             "google": ProviderConfig(
                 name="google",
                 api_key_env="GOOGLE_API_KEY",
                 models={
-                    ModelTier.FAST: "gemini-1.5-flash",
-                    ModelTier.CAPABLE: "gemini-1.5-pro",
-                    ModelTier.ADVANCED: "gemini-1.5-pro",
+                    ModelTier.FAST: "gemini-1.5-flash-002",  # Latest Flash variant
+                    ModelTier.CAPABLE: "gemini-1.5-pro-002",  # Latest Pro variant  
+                    ModelTier.ADVANCED: "gemini-1.5-pro-002",  # Pro for advanced tasks
                 }
             ),
             "azure": ProviderConfig(
@@ -107,16 +115,16 @@ class LLMConfig:
                 models={
                     ModelTier.FAST: "azure/gpt-4o-mini",
                     ModelTier.CAPABLE: "azure/gpt-4o",
-                    ModelTier.ADVANCED: "azure/gpt-4o",
+                    ModelTier.ADVANCED: "azure/o1",  # If available in your Azure deployment
                 }
             ),
             "openrouter": ProviderConfig(
                 name="openrouter",
                 api_key_env="OPENROUTER_API_KEY",
                 models={
-                    ModelTier.FAST: "openrouter/anthropic/claude-3-haiku",
-                    ModelTier.CAPABLE: "openrouter/anthropic/claude-3.5-sonnet",
-                    ModelTier.ADVANCED: "openrouter/anthropic/claude-3.5-sonnet",
+                    ModelTier.FAST: "openrouter/anthropic/claude-3.5-haiku",
+                    ModelTier.CAPABLE: "openrouter/anthropic/claude-sonnet-4.5",  # Claude 4.5 via OpenRouter
+                    ModelTier.ADVANCED: "openrouter/anthropic/claude-opus-4.1",  # Claude 4.1 via OpenRouter
                 }
             ),
         }
