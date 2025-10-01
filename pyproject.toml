@@ -1,3 +1,7 @@
+[build-system]
+requires = ["uv_build>=0.8.22,<0.9.0"]
+build-backend = "uv_build"
+
 [project]
 name = "Otter"
 version = "0.0.1-rc1"
@@ -8,6 +12,8 @@ dependencies = [
     "gitpython>=3.1.45",
     "pynvim>=0.6.0",
     "mcp[cli]>=1.15.0",
+    "litellm>=1.30.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.scripts]
@@ -15,10 +21,28 @@ otter-server = "otter.mcp_server:main"
 
 [dependency-groups]
 dev = [
+    "debugpy>=1.8.0",  # Required for DAP Python debugging
+    "doppler-env>=0.3.1",  # Doppler secrets management
     "mypy>=1.18.2",
     "pytest>=8.4.2",
     "pytest-asyncio>=1.2.0",
     "pytest-cov>=7.0.0",
     "pytest-watch>=4.2.0",
     "ruff>=0.13.2",
+    "semver>=3.0.4",
 ]
+
+docs = [
+    "mkdocs>=1.6.0",
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings[python]>=0.26.0",
+    "mkdocs-gen-files>=0.5.0",
+    "mkdocs-literate-nav>=0.6.0",
+    "mkdocs-section-index>=0.3.0",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

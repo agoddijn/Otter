@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from cli_ide.models.responses import Diagnostic
-from cli_ide.services.workspace import WorkspaceService
+from otter.models.responses import Diagnostic
+from otter.services.workspace import WorkspaceService
 
 
 class TestGetDiagnostics:

@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from cli_ide.models.responses import FileContent
-from cli_ide.services.workspace import WorkspaceService
+from otter.models.responses import FileContent
+from otter.services.workspace import WorkspaceService
 
 
 class TestReadFile:
@@ -27,7 +27,8 @@ class TestReadFile:
         result = await service.read_file("test.py")
 
         assert isinstance(result, FileContent)
-        assert result.content == "line1\nline2\nline3"
+        # Should include line numbers
+        assert result.content == "1|line1\n2|line2\n3|line3"
         assert result.expanded_imports is None
         assert result.diagnostics is None
 
@@ -42,7 +43,8 @@ class TestReadFile:
         # Read lines 2-4
         result = await service.read_file("test.py", line_range=(2, 4))
 
-        assert result.content == "line2\nline3\nline4"
+        # Should include line numbers starting from line 2
+        assert result.content == "2|line2\n3|line3\n4|line4"
 
     @pytest.mark.asyncio
     async def test_read_file_with_context_lines_without_nvim(
@@ -57,8 +59,8 @@ class TestReadFile:
         # Read lines 3-4 with 1 line of context
         result = await service.read_file("test.py", line_range=(3, 4), context_lines=1)
 
-        # Should get lines 2-5 (3-4 ± 1)
-        assert result.content == "line2\nline3\nline4\nline5"
+        # Should get lines 2-5 (3-4 ± 1) with line numbers
+        assert result.content == "2|line2\n3|line3\n4|line4\n5|line5"
 
     @pytest.mark.asyncio
     async def test_read_file_with_context_at_file_start(self, temp_project_dir: Path):
@@ -71,8 +73,8 @@ class TestReadFile:
         # Read line 1 with context - shouldn't try to read line 0
         result = await service.read_file("test.py", line_range=(1, 1), context_lines=5)
 
-        # Should start at line 1
-        assert result.content.startswith("line1")
+        # Should start at line 1 with line number
+        assert result.content.startswith("1|line1")
 
     @pytest.mark.asyncio
     async def test_read_nonexistent_file(self, temp_project_dir: Path):
@@ -93,7 +95,8 @@ class TestReadFile:
         # Use absolute path
         result = await service.read_file(str(test_file))
 
-        assert "absolute path test" in result.content
+        # Should have line numbers
+        assert result.content == "1|absolute path test"
 
     @pytest.mark.asyncio
     async def test_read_file_with_nvim(self, temp_project_dir: Path):
@@ -115,7 +118,8 @@ class TestReadFile:
 
         # Should NOT have called nvim since no special features requested
         mock_nvim.read_buffer.assert_not_called()
-        assert "nvim test" in result.content
+        # Should have line numbers
+        assert result.content == "1|nvim test\n2|line2"
 
     @pytest.mark.asyncio
     async def test_extract_imports_python(self, temp_project_dir: Path):

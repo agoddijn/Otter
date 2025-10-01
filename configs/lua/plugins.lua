@@ -49,4 +49,12 @@ return {
             })
         end,
     },
+    
+    -- DAP (Debug Adapter Protocol) for language-agnostic debugging
+    {
+        'mfussenegger/nvim-dap',
+        config = function()
+            require('dap_config').setup()  -- Load our DAP configurations
+        end,
+    },
 }

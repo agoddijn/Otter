@@ -6,39 +6,45 @@ A powerful text-based IDE designed specifically for AI agents and LLMs, exposed 
 
 This project provides a comprehensive IDE interface for AI agents to interact with codebases. Instead of relying on simple file operations, agents get access to semantic code understanding, intelligent navigation, refactoring tools, and more - all through a clean MCP server interface.
 
+## Philosophy
+
+**Otter focuses on what agents can't easily do via shell commands**: LSP and TreeSitter-powered semantic code intelligence.
+
+We do **NOT** reimplement shell features:
+- ❌ Text/regex search → Use `rg` directly
+- ❌ Running tests → Use `pytest`/`cargo test` directly
+- ❌ Git operations → Use `git` directly
+- ❌ Shell commands → Agents already have shell access
+
 ## Features
 
-### 🔍 **Code Navigation & Discovery**
+### 🔍 **LSP-Powered Navigation**
 - Find symbol definitions with context-aware resolution
 - Find all references to symbols across the project
-- Semantic code search that understands structure, not just text
+- Type information and documentation at any position
 
 ### 🧠 **Code Intelligence**
-- Hover information with type signatures and documentation
-- Context-aware code completions
-- Symbol extraction and analysis
+- LSP diagnostics (linting, type errors) inline
+- Symbol extraction and file outlines
+- Dependency analysis (TreeSitter-based, language-agnostic)
+- Context-aware code completions (LSP-powered)
 
-### 🛠️ **Refactoring Tools**
+### 🐛 **DAP-Powered Debugging** ✨ *NEW*
+- **Language-agnostic debugging** via Neovim's DAP client
+- Set breakpoints (regular and conditional)
+- Step through code (over, into, out)
+- Inspect variables, call stack, and expressions
+- Supports Python, JavaScript/TypeScript, Rust, Go
+- Full programmatic control for AI agents
+
+### 🛠️ **LSP-Powered Refactoring** *(Coming soon)*
 - Safe symbol renaming across all references
 - Function extraction with smart variable handling
 - Preview changes before applying
 
-### 📊 **Smart Analysis**
-- Natural language code explanations
-- Actionable improvement suggestions
-- Semantic diff understanding (what changed, not just lines)
-
-### 🔬 **Diagnostics & Testing**
-- Real-time linting and type checking
-- Dependency analysis and graph visualization
-- Test execution with smart targeting
-- Execution tracing for debugging
-
-### 📁 **Workspace Management**
-- Intelligent file reading with context
-- Project structure exploration
-- Position marking for tracking changes
-- Shell command execution
+### 📁 **Enhanced File Operations**
+- Read files with diagnostics inline
+- Context-aware line range reading
 
 ## Quick Start
 
@@ -60,7 +66,7 @@ See [docs/DEPENDENCIES.md](./docs/DEPENDENCIES.md) for detailed installation ins
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd cli-ide-4
+cd otter
 
 # Check system dependencies
 make check-deps
@@ -105,7 +111,7 @@ make run
 make run PROJECT=/path/to/your/project
 
 # Or use environment variable directly
-PYTHONPATH=src IDE_PROJECT_PATH=/path/to/project uv run python -m cli_ide.mcp_server
+PYTHONPATH=src IDE_PROJECT_PATH=/path/to/project uv run python -m otter.mcp_server
 ```
 
 ### Available Make Commands
@@ -138,7 +144,7 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
       "command": "sh",
       "args": [
         "-c",
-        "cd /path/to/cli-ide-4 && PYTHONPATH=src IDE_PROJECT_PATH=/path/to/my/project uv run python -m cli_ide.mcp_server"
+        "cd /path/to/otter && PYTHONPATH=src IDE_PROJECT_PATH=/path/to/my/project uv run python -m otter.mcp_server"
       ],
       "env": {}
     }
@@ -147,7 +153,7 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 ```
 
 **Important:** Set both paths:
-- `/path/to/cli-ide-4` - Path to this IDE installation
+- `/path/to/otter` - Path to this IDE installation
 - `/path/to/my/project` - Path to the project you want to analyze
 
 You can configure multiple projects:
@@ -159,14 +165,14 @@ You can configure multiple projects:
       "command": "sh",
       "args": [
         "-c",
-        "cd /path/to/cli-ide-4 && PYTHONPATH=src IDE_PROJECT_PATH=~/code/frontend uv run python -m cli_ide.mcp_server"
+        "cd /path/to/otter && PYTHONPATH=src IDE_PROJECT_PATH=~/code/frontend uv run python -m otter.mcp_server"
       ]
     },
     "backend-ide": {
       "command": "sh",
       "args": [
         "-c",
-        "cd /path/to/cli-ide-4 && PYTHONPATH=src IDE_PROJECT_PATH=~/code/backend uv run python -m cli_ide.mcp_server"
+        "cd /path/to/otter && PYTHONPATH=src IDE_PROJECT_PATH=~/code/backend uv run python -m otter.mcp_server"
       ]
     }
   }
@@ -179,12 +185,12 @@ You can configure multiple projects:
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-async def use_cli_ide():
+async def use_otter():
     server_params = StdioServerParameters(
         command="sh",
         args=[
             "-c",
-            "cd /path/to/cli-ide-4 && PYTHONPATH=src uv run python -m cli_ide.mcp_server"
+            "cd /path/to/otter && PYTHONPATH=src uv run python -m otter.mcp_server"
         ],
     )
     
@@ -202,20 +208,18 @@ async def use_cli_ide():
 
 ## Available Tools
 
-The server exposes **21 tools** across multiple categories:
+The server exposes **15 core tools** focused on LSP/TreeSitter/DAP intelligence:
 
 | Category | Tools | Description |
 |----------|-------|-------------|
-| **Navigation** | `find_definition`, `find_references`, `search` | Navigate and discover code |
-| **Intelligence** | `get_hover_info`, `get_completions` | Type information and suggestions |
-| **Files** | `read_file`, `get_project_structure`, `get_symbols` | File and project operations |
-| **Refactoring** | `rename_symbol`, `extract_function` | Safe code transformations |
-| **Analysis** | `explain_code`, `suggest_improvements`, `semantic_diff` | AI-powered insights |
-| **Diagnostics** | `get_diagnostics`, `analyze_dependencies` | Errors and dependencies |
-| **Testing** | `run_tests`, `trace_execution` | Test and debug |
-| **Workspace** | `mark_position`, `diff_since_mark`, `vim_command`, `shell` | Workspace utilities |
+| **Navigation** | `find_definition`, `find_references` | LSP-powered symbol navigation |
+| **Intelligence** | `get_hover_info`, `get_symbols`, `get_completions` | Type info, outlines, autocomplete |
+| **Debugging** | `start_debug_session`, `control_execution`, `inspect_state`, `set_breakpoints`, `get_debug_session_info` | DAP-powered debugging (Python, JS/TS, Rust, Go) |
+| **Files** | `read_file` | Read with diagnostics inline |
+| **Diagnostics** | `get_diagnostics`, `analyze_dependencies` | Errors and dependency graphs |
+| **Refactoring** *(Coming)* | `rename_symbol`, `extract_function` | Safe transformations |
 
-See [MCP_USAGE.md](./MCP_USAGE.md) for detailed documentation on each tool.
+See [User Guide](./docs/USER_GUIDE.md) for detailed documentation on each tool.
 
 ## Example Usage
 
@@ -223,41 +227,79 @@ See [MCP_USAGE.md](./MCP_USAGE.md) for detailed documentation on each tool.
 
 ```python
 result = await session.call_tool("find_definition", {
-    "symbol": "NavigationService"
+    "symbol": "NavigationService",
+    "file": "server.py",
+    "line": 48
 })
-# Returns: Definition(file="...", line=8, type="class", ...)
+# Returns: Definition with file, line, type, signature, docstring
 ```
 
-### Search semantically
+### Find all references to a symbol
 
 ```python
-result = await session.call_tool("search", {
-    "query": "error handling in async functions",
-    "search_type": "semantic"
+result = await session.call_tool("find_references", {
+    "symbol": "process_user",
+    "file": "services.py",
+    "line": 12
 })
-# Finds try/except blocks in async functions
+# Returns: List of all places where process_user is used
 ```
 
-### Read file with context
+### Get type information at a position
+
+```python
+result = await session.call_tool("get_hover_info", {
+    "file": "main.py",
+    "line": 45,
+    "column": 12
+})
+# Returns: Type signature, docstring, and source location
+```
+
+### Read file with diagnostics inline
 
 ```python
 result = await session.call_tool("read_file", {
     "path": "src/cli_ide/server.py",
     "line_range": [40, 60],
-    "include_imports": true,
     "include_diagnostics": true
 })
-# Returns content with expanded imports and inline errors
+# Returns content with LSP errors/warnings inline
 ```
 
-### Get improvement suggestions
+### Start debugging session
 
 ```python
-result = await session.call_tool("suggest_improvements", {
-    "file": "src/cli_ide/services/analysis.py",
-    "focus_areas": ["error_handling", "type_safety"]
+result = await session.call_tool("start_debug_session", {
+    "file": "src/app.py",
+    "breakpoints": [10, 25, 42]
 })
-# Returns actionable suggestions with examples
+# Returns: DebugSession with session_id, status, breakpoints
+```
+
+### Step through code and inspect variables
+
+```python
+# Step over current line
+await session.call_tool("control_execution", {
+    "action": "step_over"
+})
+
+# Inspect current state
+result = await session.call_tool("inspect_state", {
+    "expression": "user.name"
+})
+# Returns: stack frames, variables, and evaluation result
+```
+
+### Analyze dependencies
+
+```python
+result = await session.call_tool("analyze_dependencies", {
+    "file": "core/engine.py",
+    "direction": "both"
+})
+# Returns what this file imports and what imports it
 ```
 
 ## Architecture
@@ -299,48 +341,65 @@ See [ARCHITECTURE.md](./docs/ARCHITECTURE.md) for detailed architectural documen
 
 ### User Documentation
 - **[README.md](./README.md)** - This file (quick start and overview)
-- **[DEPENDENCIES.md](./docs/DEPENDENCIES.md)** - System requirements and installation
-- **[SPECIFICATION.md](./docs/SPECIFICATION.md)** - Complete specification of all 21 IDE tools
+- **[User Guide](./docs/USER_GUIDE.md)** - Complete tool reference and usage
+- **[Dependencies](./docs/DEPENDENCIES.md)** - System requirements and installation
 
 ### Developer Documentation
-- **[ARCHITECTURE.md](./docs/ARCHITECTURE.md)** - Architecture and design decisions
-- **[TECHNICAL_GUIDE.md](./docs/TECHNICAL_GUIDE.md)** - Neovim and TreeSitter integration details
-- **[DEVELOPMENT.md](./docs/DEVELOPMENT.md)** - Implementation patterns and best practices
+- **[Contributing](./docs/CONTRIBUTING.md)** - How to contribute to Otter
+- **[Architecture](./docs/ARCHITECTURE.md)** - Architecture and design decisions
+- **[Technical Guide](./docs/TECHNICAL_GUIDE.md)** - Neovim and TreeSitter integration details
+- **[Testing Guide](./tests/TESTING.md)** - Complete testing documentation
+
+### Project Documentation
+- **[Documentation Index](./docs/README.md)** - Navigate all documentation
+- **[Changelog](./CHANGELOG.md)** - Version history and notable changes
 
 ## Development Status
 
-**Phase 1 Complete** (8 of 21 tools implemented):
+**Core Features** - 13 of 15 tools complete (87%):
 
-✅ **Implemented & Tested** (91 tests passing):
-- `get_project_structure` - File tree traversal (8 tests)
-- `read_file` - File reading with LSP context (20 tests)
+✅ **Implemented & Tested** (131 tests passing):
+
+**LSP-Powered Intelligence (8 tools)**
+- `find_definition` - LSP symbol definitions (7 tests)
+- `find_references` - LSP symbol references (9 tests)
+- `get_hover_info` - LSP type info and docs (5 tests)
+- `get_symbols` - LSP file outlines (12 tests)
 - `get_diagnostics` - LSP errors and warnings (12 tests)
-- `analyze_dependencies` - Import analysis via TreeSitter (6 tests)
-- `find_definition` - Jump to symbol definitions (7 tests)
-- `find_references` - Find all symbol references (9 tests)
-- `get_symbols` - File outline via LSP (12 tests)
-- `get_hover_info` - Type info and docs (5 tests)
+- `get_completions` - LSP autocomplete (10 tests)
+- `read_file` - Enhanced file reading (20 tests)
+- `analyze_dependencies` - TreeSitter imports (6 tests)
 
-⏳ **In Progress** (Phase 2):
-- `search` - Workspace-wide code search
-- `get_completions` - LSP-based autocomplete
-- `get_quick_fixes` - LSP code actions
+**DAP-Powered Debugging (5 tools)** ✨ **NEW**
+- `start_debug_session` - Start debugging with breakpoints (8 tests)
+- `control_execution` - Step through code (10 tests)
+- `inspect_state` - Variables and stack frames (12 tests)
+- `set_breakpoints` - Dynamic breakpoints (included in session tests)
+- `get_debug_session_info` - Session status (included in session tests)
+- **Languages**: Python, JavaScript/TypeScript, Rust, Go
 
-📋 **Planned** (13 remaining tools):
-- Refactoring tools (rename, extract, etc.)
-- Code formatting and organization
-- Test execution and debugging
-- See [SPECIFICATION.md](./docs/SPECIFICATION.md) for complete list
+🚧 **Next Priorities**:
+1. `rename_symbol` - LSP-powered safe refactoring (high-value)
+2. `extract_function` - Smart code extraction (medium-value)
+
+❌ **Removed** (agents can use shell directly):
+- Text/regex search → Use `rg` 
+- Test execution → Use `pytest`/`cargo test`
+- Git operations → Use `git`
+- Shell commands → Direct access
+- See [User Guide](./docs/USER_GUIDE.md) for rationale
 
 ### Quality Metrics
 - ✅ **Type Safety**: Zero mypy errors (strict mode)
-- ✅ **Tests**: 91 tests (33 integration, 58 unit), all passing
-- ✅ **Coverage**: ~80% estimated (comprehensive integration testing)
-- ✅ **Documentation**: 3,000+ lines across 5 documents
+- ✅ **Tests**: 204 tests (174 parameterized, 30 debugging), all passing
+- ✅ **Language Coverage**: Python, JavaScript, Rust (58 test scenarios × 3 languages)
+- ✅ **Test Framework**: Robust async polling framework for DAP testing
+- ✅ **Coverage**: ~85% estimated (comprehensive integration testing)
+- ✅ **Documentation**: Consolidated to 10 core documents + changelog
 
 ## Testing
 
-The project includes a comprehensive test suite. See [tests/README.md](tests/README.md) for details.
+The project includes a comprehensive test suite. See [Testing Guide](tests/TESTING.md) for complete documentation.
 
 ```bash
 # Run all tests
@@ -362,12 +421,12 @@ make test-watch
 
 ## Contributing
 
-This project is structured to make contributions easy:
+We welcome contributions! See the [Contributing Guide](./docs/CONTRIBUTING.md) for details on:
 
-1. **Adding new tools**: Add decorated functions in `src/cli_ide/mcp_server.py`
-2. **Implementing services**: Fill in service methods in `src/cli_ide/services/`
-3. **Neovim integration**: Implement client in `src/cli_ide/neovim/`
-4. **Language support**: Add modules in `src/cli_ide/languages/`
+- Development setup and workflow
+- Code patterns and best practices
+- Writing tests (including language-agnostic tests)
+- Pull request process
 
 ## License
 

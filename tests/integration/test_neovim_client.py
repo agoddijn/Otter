@@ -9,7 +9,7 @@ import pytest
 from pathlib import Path
 import asyncio
 
-from cli_ide.neovim.client import NeovimClient
+from otter.neovim.client import NeovimClient
 
 
 # Mark as integration tests

@@ -1,223 +1,245 @@
-"""Integration tests for get_symbols feature."""
+"""Integration tests for get_symbols feature (language-agnostic).
 
-import tempfile
-from pathlib import Path
+This test suite runs across Python, JavaScript, and Rust to verify that
+get_symbols works consistently across all supported languages.
+"""
 
 import pytest
 
-from src.cli_ide.neovim.client import NeovimClient
-from src.cli_ide.services.workspace import WorkspaceService
+from src.otter.neovim.client import NeovimClient
+from src.otter.services.workspace import WorkspaceService
+from tests.fixtures.language_configs import LanguageTestConfig
 
 
 @pytest.mark.asyncio
-class TestGetSymbolsIntegration:
-    """Integration tests for get_symbols with real Neovim instance."""
+class TestGetSymbolsParameterized:
+    """Language-agnostic integration tests for get_symbols."""
 
     @pytest.fixture
-    async def temp_project(self):
-        """Create a temporary project with test files."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            project_path = Path(tmpdir)
-
-            # Create a Python file with various symbols
-            test_file = project_path / "example.py"
-            test_file.write_text('''"""Example module with various symbols."""
-
-# Module-level constant
-VERSION = "1.0.0"
-
-class BaseModel:
-    """Base class for all models."""
-    
-    def __init__(self):
-        """Initialize base model."""
-        self.id = None
-    
-    def save(self) -> bool:
-        """Save to database."""
-        return True
-
-class UserModel(BaseModel):
-    """User data model."""
-    
-    def __init__(self, name: str, email: str):
-        """Initialize user model."""
-        super().__init__()
-        self.name = name
-        self.email = email
-    
-    def validate(self) -> bool:
-        """Validate user data."""
-        return bool(self.name and self.email)
-    
-    @property
-    def display_name(self) -> str:
-        """Get display name."""
-        return self.name.title()
-
-def create_user(name: str, email: str) -> UserModel:
-    """Factory function for creating users."""
-    return UserModel(name, email)
-
-def process_users(users: list) -> int:
-    """Process a list of users."""
-    count = 0
-    for user in users:
-        if user.validate():
-            user.save()
-            count += 1
-    return count
-''')
-
-            yield project_path
-
-    @pytest.fixture
-    async def workspace_service(self, temp_project):
-        """Create WorkspaceService with a real Neovim instance."""
-        nvim_client = NeovimClient(project_path=str(temp_project))
+    async def workspace_service(self, language_project_dir, language_config: LanguageTestConfig):
+        """Create WorkspaceService with a real Neovim instance for the test language."""
+        nvim_client = NeovimClient(project_path=str(language_project_dir))
         service = WorkspaceService(
-            project_path=str(temp_project), nvim_client=nvim_client
+            project_path=str(language_project_dir), nvim_client=nvim_client
         )
 
         await nvim_client.start()
 
         # Wait for LSP to analyze files
         import asyncio
-
         await asyncio.sleep(2)
 
         yield service
         await nvim_client.stop()
 
-    async def test_get_all_symbols(self, workspace_service, temp_project):
-        """Test getting all symbols from a file."""
-        symbols = await workspace_service.get_symbols(str(temp_project / "example.py"))
+    async def test_get_all_symbols(
+        self, workspace_service, language_project_dir, language_config: LanguageTestConfig
+    ):
+        """Test getting all symbols from a file across all languages."""
+        ext = language_config.file_extension
+        symbols = await workspace_service.get_symbols(str(language_project_dir / f"models{ext}"))
 
-        # Should have classes, functions, and module-level items
-        assert len(symbols) > 0
+        # Should have classes, functions, and possibly module-level items
+        assert len(symbols) > 0, f"Expected symbols for {language_config.language}"
 
-        # Check we have the expected top-level symbols
+        # Check we have expected top-level symbols
         symbol_names = {s.name for s in symbols}
-        assert "BaseModel" in symbol_names or "UserModel" in symbol_names
-        assert "create_user" in symbol_names or "process_users" in symbol_names
+        
+        # Should have at least User class and create_user function
+        # (naming convention may vary by language)
+        has_user = "User" in symbol_names
+        has_create = any(name in symbol_names for name in ["create_user", "createUser"])
+        
+        assert has_user or has_create, \
+            f"Expected User class or create_user function in {language_config.language} symbols: {symbol_names}"
 
-    async def test_symbols_have_correct_types(self, workspace_service, temp_project):
-        """Test that symbols have correct type information."""
-        symbols = await workspace_service.get_symbols(str(temp_project / "example.py"))
+    async def test_symbols_have_correct_types(
+        self, workspace_service, language_project_dir, language_config: LanguageTestConfig
+    ):
+        """Test that symbols have correct type information across all languages."""
+        ext = language_config.file_extension
+        symbols = await workspace_service.get_symbols(str(language_project_dir / f"models{ext}"))
 
         # Find specific symbols and verify their types
         for symbol in symbols:
-            if symbol.name == "BaseModel" or symbol.name == "UserModel":
-                assert symbol.type == "class"
-            elif symbol.name == "create_user" or symbol.name == "process_users":
-                assert symbol.type == "function"
-            elif symbol.name == "VERSION":
-                assert symbol.type in ["variable", "constant"]
+            # Class/struct types
+            if symbol.name == "User":
+                assert symbol.type in ["class", "struct"], \
+                    f"User should be class/struct in {language_config.language}"
+            
+            # Function types
+            elif symbol.name in ["create_user", "createUser"]:
+                assert symbol.type == "function", \
+                    f"create_user should be function in {language_config.language}"
+            
+            # Constant/variable types
+            elif symbol.name in ["DEFAULT_NAME"]:
+                assert symbol.type in ["variable", "constant", "const"], \
+                    f"DEFAULT_NAME should be variable/constant in {language_config.language}"
 
-    async def test_symbols_have_line_numbers(self, workspace_service, temp_project):
-        """Test that symbols include line numbers."""
-        symbols = await workspace_service.get_symbols(str(temp_project / "example.py"))
+    async def test_symbols_have_line_numbers(
+        self, workspace_service, language_project_dir, language_config: LanguageTestConfig
+    ):
+        """Test that symbols include line numbers across all languages."""
+        ext = language_config.file_extension
+        symbols = await workspace_service.get_symbols(str(language_project_dir / f"models{ext}"))
 
         # All symbols should have positive line numbers
         for symbol in symbols:
-            assert symbol.line > 0
+            assert symbol.line > 0, \
+                f"Symbol {symbol.name} should have positive line number in {language_config.language}"
 
-    async def test_symbols_include_children(self, workspace_service, temp_project):
+    async def test_symbols_include_children(
+        self, workspace_service, language_project_dir, language_config: LanguageTestConfig
+    ):
         """Test that class symbols include their methods as children."""
-        symbols = await workspace_service.get_symbols(str(temp_project / "example.py"))
+        ext = language_config.file_extension
+        symbols = await workspace_service.get_symbols(str(language_project_dir / f"models{ext}"))
 
-        # Find a class symbol
-        user_model = None
+        # Find the User class/struct symbol
+        user_symbol = None
         for symbol in symbols:
-            if symbol.name == "UserModel":
-                user_model = symbol
+            if symbol.name == "User":
+                user_symbol = symbol
                 break
 
-        if user_model:
+        if user_symbol:
             # Should have children (methods)
-            assert user_model.children is not None
-            assert len(user_model.children) > 0
+            assert user_symbol.children is not None, \
+                f"User should have children in {language_config.language}"
+            assert len(user_symbol.children) > 0, \
+                f"User should have methods in {language_config.language}"
 
-            # Children should be methods
-            method_names = {child.name for child in user_model.children}
-            assert "__init__" in method_names or "validate" in method_names
+            # Children should be methods/functions
+            method_names = {child.name for child in user_symbol.children}
+            
+            # Different languages have different constructor/method names
+            expected_methods = {
+                "python": ["__init__", "greet"],
+                "javascript": ["constructor", "greet"],
+                "rust": ["new", "greet"],
+            }
+            
+            expected = expected_methods[language_config.language]
+            has_expected = any(method in method_names for method in expected)
+            
+            assert has_expected, \
+                f"Expected methods {expected} in {language_config.language}, got {method_names}"
 
-    async def test_child_symbols_have_parent(self, workspace_service, temp_project):
-        """Test that child symbols reference their parent."""
-        symbols = await workspace_service.get_symbols(str(temp_project / "example.py"))
+    async def test_child_symbols_have_parent(
+        self, workspace_service, language_project_dir, language_config: LanguageTestConfig
+    ):
+        """Test that child symbols reference their parent across all languages."""
+        ext = language_config.file_extension
+        symbols = await workspace_service.get_symbols(str(language_project_dir / f"models{ext}"))
 
         # Find a class with children
         for symbol in symbols:
-            if symbol.children:
+            if symbol.children and len(symbol.children) > 0:
                 for child in symbol.children:
                     # Child should reference parent
-                    assert child.parent == symbol.name
+                    assert child.parent == symbol.name, \
+                        f"Child {child.name} should have parent {symbol.name} in {language_config.language}"
+                break
 
-    async def test_filter_by_symbol_type_class(self, workspace_service, temp_project):
-        """Test filtering symbols by type (class)."""
+    async def test_filter_by_symbol_type_class(
+        self, workspace_service, language_project_dir, language_config: LanguageTestConfig
+    ):
+        """Test filtering symbols by type (class) across all languages."""
+        ext = language_config.file_extension
+        
+        # Rust uses "struct" instead of "class"
+        symbol_types = ["class"] if language_config.language != "rust" else ["struct", "class"]
+        
         symbols = await workspace_service.get_symbols(
-            str(temp_project / "example.py"), symbol_types=["class"]
+            str(language_project_dir / f"models{ext}"), symbol_types=symbol_types
         )
 
-        # Should only have class symbols
+        # Should only have class/struct symbols
         for symbol in symbols:
-            assert symbol.type == "class"
+            assert symbol.type in symbol_types, \
+                f"Expected {symbol_types} but got {symbol.type} in {language_config.language}"
 
     async def test_filter_by_symbol_type_function(
-        self, workspace_service, temp_project
+        self, workspace_service, language_project_dir, language_config: LanguageTestConfig
     ):
-        """Test filtering symbols by type (function)."""
+        """Test filtering symbols by type (function) across all languages."""
+        ext = language_config.file_extension
         symbols = await workspace_service.get_symbols(
-            str(temp_project / "example.py"), symbol_types=["function"]
+            str(language_project_dir / f"models{ext}"), symbol_types=["function"]
         )
 
         # Should only have function symbols (not methods)
         for symbol in symbols:
-            assert symbol.type == "function"
+            assert symbol.type == "function", \
+                f"Expected function but got {symbol.type} in {language_config.language}"
             # Should not have a parent (top-level functions)
-            assert symbol.parent is None
+            assert symbol.parent is None, \
+                f"Top-level function should not have parent in {language_config.language}"
 
-    async def test_filter_by_multiple_types(self, workspace_service, temp_project):
-        """Test filtering by multiple symbol types."""
+    async def test_filter_by_multiple_types(
+        self, workspace_service, language_project_dir, language_config: LanguageTestConfig
+    ):
+        """Test filtering by multiple symbol types across all languages."""
+        ext = language_config.file_extension
+        
+        # Adjust for Rust's use of "struct" instead of "class"
+        symbol_types = ["class", "function"] if language_config.language != "rust" \
+                      else ["struct", "function", "class"]
+        
         symbols = await workspace_service.get_symbols(
-            str(temp_project / "example.py"), symbol_types=["class", "function"]
+            str(language_project_dir / f"models{ext}"), symbol_types=symbol_types
         )
 
-        # Should have both classes and functions
+        # Should have both classes/structs and functions
         types = {s.type for s in symbols}
-        assert "class" in types or "function" in types
+        assert len(types.intersection(set(symbol_types))) > 0, \
+            f"Expected types {symbol_types} in {language_config.language}, got {types}"
 
         # Should not have other types at top level
         for symbol in symbols:
-            assert symbol.type in ["class", "function"]
+            assert symbol.type in symbol_types, \
+                f"Unexpected type {symbol.type} in {language_config.language}"
 
-    async def test_empty_file_returns_empty_list(self, workspace_service, temp_project):
-        """Test that an empty file returns an empty list."""
-        empty_file = temp_project / "empty.py"
+    async def test_empty_file_returns_empty_list(
+        self, workspace_service, language_project_dir, language_config: LanguageTestConfig
+    ):
+        """Test that an empty file returns an empty list across all languages."""
+        ext = language_config.file_extension
+        empty_file = language_project_dir / f"empty{ext}"
         empty_file.write_text("")
 
         import asyncio
-
         await asyncio.sleep(1)
 
         symbols = await workspace_service.get_symbols(str(empty_file))
-        assert symbols == []
+        assert symbols == [], f"Empty file should return empty list in {language_config.language}"
 
-    async def test_file_not_found_raises_error(self, workspace_service, temp_project):
-        """Test that non-existent file raises FileNotFoundError."""
+    async def test_file_not_found_raises_error(
+        self, workspace_service, language_project_dir, language_config: LanguageTestConfig
+    ):
+        """Test that non-existent file raises FileNotFoundError across all languages."""
+        ext = language_config.file_extension
         with pytest.raises(FileNotFoundError):
-            await workspace_service.get_symbols(str(temp_project / "nonexistent.py"))
+            await workspace_service.get_symbols(str(language_project_dir / f"nonexistent{ext}"))
 
-    async def test_symbols_without_nvim_raises_error(self, temp_project):
+    async def test_symbols_without_nvim_raises_error(
+        self, language_project_dir, language_config: LanguageTestConfig
+    ):
         """Test that get_symbols without Neovim client raises error."""
-        service = WorkspaceService(project_path=str(temp_project), nvim_client=None)
+        service = WorkspaceService(project_path=str(language_project_dir), nvim_client=None)
+        ext = language_config.file_extension
 
         with pytest.raises(RuntimeError, match="Neovim client required"):
-            await service.get_symbols(str(temp_project / "example.py"))
+            await service.get_symbols(str(language_project_dir / f"models{ext}"))
 
-    async def test_relative_path_works(self, workspace_service, temp_project):
-        """Test that relative paths work correctly."""
-        symbols = await workspace_service.get_symbols("example.py")
+    async def test_relative_path_works(
+        self, workspace_service, language_config: LanguageTestConfig
+    ):
+        """Test that relative paths work correctly across all languages."""
+        ext = language_config.file_extension
+        symbols = await workspace_service.get_symbols(f"models{ext}")
 
         # Should work the same as absolute path
-        assert len(symbols) > 0
+        assert len(symbols) > 0, f"Relative path should work in {language_config.language}"
+

@@ -3,8 +3,8 @@
 import pytest
 from pathlib import Path
 
-from cli_ide.services.workspace import WorkspaceService
-from cli_ide.models.responses import ProjectTree
+from otter.services.workspace import WorkspaceService
+from otter.models.responses import ProjectTree
 
 
 class TestGetProjectStructure:

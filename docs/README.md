@@ -1,169 +1,206 @@
 # Documentation Index
 
-This directory contains comprehensive documentation for the CLI IDE for AI Agents.
+This directory contains comprehensive documentation for Otter - the IDE for AI agents.
 
 ---
 
 ## 📚 Documentation Structure
 
-### For Users
+### For Users (3 documents)
 
 | Document | Purpose | Audience |
 |----------|---------|----------|
-| **[../README.md](../README.md)** | Quick start, installation, usage | Everyone |
+| **[../README.md](../README.md)** | Quick start, installation, overview | Everyone |
+| **[USER_GUIDE.md](USER_GUIDE.md)** | Complete tool reference and usage | Users, Integrators |
 | **[DEPENDENCIES.md](DEPENDENCIES.md)** | System requirements and setup | Users, DevOps |
-| **[SPECIFICATION.md](SPECIFICATION.md)** | Complete tool specifications | Users, Integrators |
 
-### For Developers
+### For Contributors (3 documents)
 
 | Document | Purpose | Audience |
 |----------|---------|----------|
+| **[CONTRIBUTING.md](CONTRIBUTING.md)** | How to contribute, code patterns, testing | Contributors |
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | High-level design and decisions | Developers |
-| **[TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md)** | Neovim, LSP, TreeSitter details | Developers |
-| **[DEVELOPMENT.md](DEVELOPMENT.md)** | Implementation patterns | Contributors |
+| **[TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md)** | Neovim, LSP, TreeSitter, DAP details | Developers |
+
+### Project Documentation (2 documents)
+
+| Document | Purpose | Audience |
+|----------|---------|----------|
+| **[../tests/TESTING.md](../tests/TESTING.md)** | Complete testing guide | Contributors |
+| **[../CHANGELOG.md](../CHANGELOG.md)** | Version history and changes | Everyone |
 
 ---
 
-## 📖 Quick Reference
+## 📖 Quick Navigation
 
 ### Getting Started
-1. **[../README.md](../README.md)** - Start here for installation and quick start
+1. **[../README.md](../README.md)** - Start here for installation
 2. **[DEPENDENCIES.md](DEPENDENCIES.md)** - Install system dependencies
-3. Run `make dev` to test the IDE
+3. **[USER_GUIDE.md](USER_GUIDE.md)** - Learn how to use Otter
 
-### Using the IDE
-- **[SPECIFICATION.md](SPECIFICATION.md)** - See all 21 available tools and their parameters
-- Use MCP Inspector (`make dev`) to explore interactively
+### Using Otter
+- **[USER_GUIDE.md](USER_GUIDE.md)** - All 15 tools with examples
+- **[../README.md#using-with-mcp-clients](../README.md#using-with-mcp-clients)** - Integration examples
 
 ### Contributing
-1. **[DEVELOPMENT.md](DEVELOPMENT.md)** - Learn implementation patterns
+1. **[CONTRIBUTING.md](CONTRIBUTING.md)** - Start here for development
 2. **[ARCHITECTURE.md](ARCHITECTURE.md)** - Understand the design
-3. **[TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md)** - Deep dive into Neovim integration
+3. **[TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md)** - Deep dive into implementation
+4. **[../tests/TESTING.md](../tests/TESTING.md)** - Testing guide
 
 ---
 
-## 📄 Document Descriptions
+## 📄 Document Summaries
 
 ### README.md (Project Root)
 **What**: Project overview, installation, quick start  
-**When to read**: First time using the IDE  
-**Length**: ~350 lines
+**When to read**: First time using Otter  
+**Key sections**:
+- Philosophy & features
+- Quick setup
+- MCP client integration
+- Development status
+
+### USER_GUIDE.md
+**What**: Complete reference for all Otter tools  
+**When to read**: Learning how to use specific tools  
+**Key sections**:
+- All 15 tools with parameters, returns, examples
+- Language support
+- Integration examples
+- Troubleshooting
 
 ### DEPENDENCIES.md
-**What**: Detailed system dependency requirements and installation  
+**What**: System dependency requirements and installation  
 **When to read**: Setting up development environment  
 **Key sections**:
-- Required dependencies (Neovim, ripgrep, etc.)
+- Required dependencies (Neovim, ripgrep, Node.js, etc.)
 - LSP server installation per language
+- DAP adapter installation
 - macOS installation with Homebrew
-- Troubleshooting dependency issues
+- Troubleshooting
 
-**Length**: ~245 lines
-
-### SPECIFICATION.md
-**What**: Complete specification of all 21 IDE tools  
-**When to read**: Integrating with the IDE or implementing features  
+### CONTRIBUTING.md
+**What**: Complete contributor guide  
+**When to read**: Contributing to Otter  
 **Key sections**:
-- Tool categories and overview
-- Detailed parameters for each tool
-- Response structure definitions
-- Usage examples
-
-**Length**: ~520 lines
+- Core principles (wrapper not reimplementer, language-agnostic)
+- Development patterns (services, paths, async, LSP, TreeSitter, DAP)
+- Testing guide (unit, integration, parameterized)
+- Adding new features
+- Pull request process
+- Common gotchas
 
 ### ARCHITECTURE.md
-**What**: High-level architecture, design decisions, learnings  
-**When to read**: Understanding the system design  
+**What**: High-level architecture and design decisions  
+**When to read**: Understanding system design  
 **Key sections**:
 - System architecture diagram
 - Layer responsibilities
 - Design decisions and rationale
-- Key learnings from implementation
-- Current status and metrics
-
-**Length**: ~200 lines (consolidated)
+- Key learnings (LSP via Lua, DAP integration, async patterns)
+- Current status and next priorities
 
 ### TECHNICAL_GUIDE.md
-**What**: Deep technical details on Neovim and TreeSitter integration  
-**When to read**: Implementing LSP features or debugging integration  
+**What**: Deep technical details on Neovim integration  
+**When to read**: Implementing LSP/DAP/TreeSitter features  
 **Key sections**:
 - Neovim client API and patterns
 - LSP integration via Lua
+- DAP integration via nvim-dap
 - TreeSitter setup and queries
 - Async/sync boundary handling
-- Troubleshooting common issues
+- Troubleshooting
 
-**Length**: ~400 lines
-
-### DEVELOPMENT.md
-**What**: Implementation patterns and best practices  
-**When to read**: Contributing new features  
+### ../tests/TESTING.md
+**What**: Complete testing documentation  
+**When to read**: Writing or running tests  
 **Key sections**:
-- Code patterns and conventions
-- Testing strategies
-- Common pitfalls and solutions
-- How to add new features
+- Running tests (all, by type, by language)
+- Writing unit and integration tests
+- Language-agnostic parameterized testing
+- Debug test framework (exponential backoff polling)
+- Best practices
 
-**Length**: ~465 lines
+### ../CHANGELOG.md
+**What**: Version history and notable changes  
+**When to read**: Checking what's new or changed  
+**Key sections**:
+- Latest features (DAP debugging, parameterized tests)
+- Breaking changes (none yet)
+- Migration guides
+- Version history
 
 ---
 
 ## 🗺️ Documentation Map by Task
 
-### "I want to use the IDE"
+### "I want to use Otter"
 1. [../README.md](../README.md) - Installation and quick start
 2. [DEPENDENCIES.md](DEPENDENCIES.md) - Install dependencies
-3. [SPECIFICATION.md](SPECIFICATION.md) - Available tools reference
+3. [USER_GUIDE.md](USER_GUIDE.md) - Tool reference
 
 ### "I want to understand how it works"
 1. [ARCHITECTURE.md](ARCHITECTURE.md) - High-level design
 2. [TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md) - Technical deep dive
 
-### "I want to add a feature"
-1. [DEVELOPMENT.md](DEVELOPMENT.md) - Implementation patterns
+### "I want to contribute"
+1. [CONTRIBUTING.md](CONTRIBUTING.md) - Start here
 2. [ARCHITECTURE.md](ARCHITECTURE.md) - Design principles
-3. [TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md) - Neovim/LSP details
+3. [TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md) - Implementation details
+4. [../tests/TESTING.md](../tests/TESTING.md) - Testing guide
 
 ### "I'm having issues"
 1. [DEPENDENCIES.md](DEPENDENCIES.md) - Dependency troubleshooting
-2. [TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md) - Common issues section
-3. [../tests/README.md](../tests/README.md) - Test infrastructure
+2. [TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md) - Common issues
+3. [USER_GUIDE.md](USER_GUIDE.md) - Tool-specific troubleshooting
 
 ---
 
-## 🔄 Recent Changes
+## 🔄 Recent Consolidation
 
-**Latest Consolidation** (Sept 30, 2025):
-- ✅ Consolidated documentation from 9 → 5 core documents
-- ✅ Removed temporary implementation notes
-- ✅ Merged Neovim and TreeSitter docs into TECHNICAL_GUIDE.md
-- ✅ Updated ARCHITECTURE.md with key learnings and metrics
-- ✅ Renamed IMPLEMENTATION_GUIDE.md → DEVELOPMENT.md
+**October 1, 2025** - Major documentation consolidation:
 
-**Removed** (content merged elsewhere):
-- `PROJECT_REVIEW.md` → Merged into ARCHITECTURE.md
-- `NEOVIM_INTEGRATION.md` → Merged into TECHNICAL_GUIDE.md
-- `TREESITTER_SETUP.md` → Merged into TECHNICAL_GUIDE.md
-- `WORKSPACE_PATH_UPDATE.md` → Temporary note, no longer needed
-- `ANALYZE_DEPENDENCIES.md` → Temporary note, no longer needed
+**Created (4 new)**:
+- ✨ `USER_GUIDE.md` - Complete tool reference
+- ✨ `CONTRIBUTING.md` - Contributor guide
+- ✨ `../tests/TESTING.md` - Complete testing guide
+- ✨ `../CHANGELOG.md` - Version history
+
+**Removed (8 redundant)**:
+- ❌ `SPECIFICATION.md` → Merged into USER_GUIDE.md
+- ❌ `DEVELOPMENT.md` → Merged into CONTRIBUTING.md
+- ❌ `PRIORITY_ANALYSIS.md` → Outdated priorities
+- ❌ `DAP_IMPLEMENTATION_COMPLETE.md` → Extracted to CHANGELOG.md
+- ❌ `DEBUGGING_TEST_FRAMEWORK.md` → Merged into TESTING.md
+- ❌ `DEBUGGING_TEST_REPORT.md` → Historical, archived
+- ❌ `DEBUGGING_TEST_RESULTS.md` → Snapshot, not needed
+- ❌ `../tests/PARAMETERIZATION_COMPLETE.md` → Merged into TESTING.md
+- ❌ `../tests/REFACTORING_SUMMARY.md` → Merged into TESTING.md
+- ❌ `../tests/README.md` → Merged into TESTING.md
+- ❌ `../tests/LANGUAGE_AGNOSTIC_TESTING_GUIDE.md` → Merged into TESTING.md
+
+**Result**: From 17 documents → 10 core documents + changelog (41% reduction)
 
 ---
 
 ## 📊 Documentation Statistics
 
-| Category | Document Count | Total Lines |
-|----------|----------------|-------------|
-| User Docs | 3 | ~1,115 lines |
-| Developer Docs | 3 | ~1,065 lines |
-| **Total** | **6** | **~2,180 lines** |
+| Category | Documents | Purpose |
+|----------|-----------|---------|
+| User Docs | 3 | Using Otter |
+| Contributor Docs | 3 | Development |
+| Project Docs | 2 | Testing & history |
+| Index | 2 | Navigation (this file + README) |
+| **Total** | **10** | **Focused, consolidated** |
 
 ---
 
-## ✅ Documentation Quality Checklist
+## ✅ Documentation Quality
 
-- ✅ Clear structure (user vs developer docs)
+- ✅ Clear structure (user vs contributor docs)
 - ✅ No duplicate information
-- ✅ Up-to-date with current implementation
+- ✅ Up-to-date with current implementation (13/15 tools, 204 tests)
 - ✅ Cross-referenced appropriately
 - ✅ Comprehensive yet concise
 - ✅ Examples where helpful
@@ -175,5 +212,6 @@ This directory contains comprehensive documentation for the CLI IDE for AI Agent
 
 - [Model Context Protocol Docs](https://modelcontextprotocol.io)
 - [Neovim LSP Documentation](https://neovim.io/doc/user/lsp.html)
+- [Debug Adapter Protocol](https://microsoft.github.io/debug-adapter-protocol/)
 - [TreeSitter Documentation](https://tree-sitter.github.io/tree-sitter/)
 - [pynvim Documentation](https://pynvim.readthedocs.io/)

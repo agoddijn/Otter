@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from cli_ide.neovim.client import NeovimClient
-from cli_ide.services.workspace import WorkspaceService
+from otter.neovim.client import NeovimClient
+from otter.services.workspace import WorkspaceService
 
 pytestmark = [
     pytest.mark.integration,
@@ -35,7 +35,8 @@ class TestReadFileIntegration:
             # Read without special features (should use direct file I/O)
             result = await service.read_file("test.py")
 
-            assert result.content == "print('hello world')"
+            # Should include line numbers
+            assert result.content == "1|print('hello world')"
             assert result.expanded_imports is None
             assert result.diagnostics is None
 
@@ -237,9 +238,9 @@ class TestReadFileIntegration:
                 "context_test.py", line_range=(3, 3), context_lines=1
             )
 
-            # Should get lines 2-4 (3 ± 1)
-            assert "line2" in result.content
-            assert "line3" in result.content
-            assert "line4" in result.content
-            assert "line1" not in result.content
-            assert "line5" not in result.content
+            # Should get lines 2-4 (3 ± 1) with line numbers
+            assert "2|line2" in result.content
+            assert "3|line3" in result.content
+            assert "4|line4" in result.content
+            assert "1|line1" not in result.content
+            assert "5|line5" not in result.content

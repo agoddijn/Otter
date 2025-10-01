@@ -15,15 +15,20 @@ This document describes the high-level architecture, design decisions, and key l
 
 ## Overview
 
-The CLI IDE is a **headless IDE server** that exposes code intelligence features through the Model Context Protocol (MCP). It leverages Neovim's LSP integration and TreeSitter parsing to provide language-agnostic code analysis without reimplementing language-specific parsers.
+Otter is a **focused IDE server** that exposes LSP and TreeSitter-powered code intelligence through the Model Context Protocol (MCP). 
+
+**What Otter does**: Provides semantic code understanding that agents cannot easily access via shell commands.
+
+**What Otter doesn't do**: Reimplement features agents can already do (text search, running tests, git operations, shell commands).
 
 ### Core Principles
 
-1. **Leverage Existing Tools**: Use Neovim's LSP, TreeSitter, and ripgrep instead of building parsers
-2. **Type-Safe Design**: Comprehensive type hints, mypy strict mode, dataclass responses
-3. **Service-Oriented**: Clear separation between workspace, navigation, analysis, and refactoring
-4. **Async-First**: Non-blocking I/O for concurrent operations
-5. **Test-Driven**: Integration tests with real LSP servers ensure correctness
+1. **LSP & TreeSitter First**: Leverage Neovim's LSP and TreeSitter for semantic understanding
+2. **No Shell Duplication**: Don't reimplement `rg`, `pytest`, `git`, or shell commands
+3. **Type-Safe Design**: Comprehensive type hints, mypy strict mode, dataclass responses
+4. **Service-Oriented**: Clear separation between workspace, navigation, analysis, and refactoring
+5. **Async-First**: Non-blocking I/O for concurrent operations
+6. **Test-Driven**: Integration tests with real LSP servers ensure correctness
 
 ---
 
@@ -122,14 +127,16 @@ See [TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md) for Neovim and TreeSitter details.
 
 ### Metrics
 
-**Tests**: 91 passing (33 integration, 58 unit)
+**Tests**: 204 passing (174 parameterized, 30 debugging)
 **Type Safety**: Zero mypy errors (strict mode)  
-**Code**: 3,390 lines source, 2,124 lines tests
-**Documentation**: 3,000+ lines
+**Language Coverage**: Python, JavaScript, Rust (58 scenarios × 3 = 174 tests)
+**Test Framework**: Custom DAP test framework with exponential backoff polling
+**Documentation**: 10 core documents + changelog (consolidated from 17)
 
 **Performance**:
 - Startup: ~500ms
 - LSP Requests: ~100-500ms
+- DAP Operations: ~0.5-2s
 - File I/O: <10ms
 
 ---
@@ -159,35 +166,85 @@ All pynvim calls need `run_in_executor`:
 await loop.run_in_executor(None, sync_operation)
 \`\`\`
 
+### 4. DAP Integration Pattern
+
+Use Neovim's `nvim-dap` plugin instead of implementing DAP protocol:
+\`\`\`python
+# Execute DAP commands via Lua
+lua_code = f"""
+local dap = require('dap')
+dap.continue()
+return dap.session()
+"""
+result = await nvim_client.execute_lua(lua_code)
+\`\`\`
+
+**Benefits**:
+- Zero custom DAP protocol code
+- Language-agnostic (works with any adapter)
+- Battle-tested implementation
+- Easy to add new languages
+
+### 5. Testing Distributed Systems
+
+Don't use fixed delays for async operations. Use polling with exponential backoff:
+\`\`\`python
+# ❌ BAD: Fixed delays
+await start_debug_session(...)
+await asyncio.sleep(0.5)  # May be too short or too long
+
+# ✅ GOOD: Poll for state
+await helper.wait_for_state("paused", timeout=10.0)
+\`\`\`
+
+**Why**: DAP is a distributed system (Test → Neovim → DAP → Adapter → Target). Fixed delays are unreliable.
+
 ---
 
 ## Current Status
 
-### Phase 1: LSP Navigation ✅ COMPLETE
+### ✅ Core Features Complete (13 of 15 tools - 87%)
 
-- find_definition (7 tests)
-- find_references (9 tests)  
-- get_symbols (12 tests)
-- get_hover_info (5 tests)
+**Navigation & Intelligence** (8 tools):
+- find_definition (7 tests) - LSP symbol resolution
+- find_references (9 tests) - LSP cross-file analysis
+- get_symbols (12 tests) - LSP document outlines
+- get_hover_info (5 tests) - LSP type information
+- get_completions (10 tests) - LSP autocomplete
+- get_diagnostics (12 tests) - LSP errors/warnings
+- analyze_dependencies (6 tests) - TreeSitter imports
+- read_file (20 tests) - Enhanced file reading
 
-### Also Complete
+**DAP Debugging** (5 tools):
+- start_debug_session (8 tests) - Initialize debugging with breakpoints
+- control_execution (10 tests) - Step, continue, pause, stop
+- inspect_state (12 tests) - Variables, stack frames, expressions
+- set_breakpoints - Dynamic breakpoint management
+- get_debug_session_info - Session status queries
 
-- get_project_structure (8 tests)
-- read_file (20 tests)
-- get_diagnostics (12 tests)
-- analyze_dependencies (6 tests)
+**Languages Supported**: Python, JavaScript/TypeScript, Rust, Go
 
-**Total**: 8 of 21 features (38%)
+**Total Tests**: 204 (174 parameterized + 30 debugging)
 
 ---
 
-## Next Steps
+## Next Priorities
 
-**Phase 2**: search, completions, quick fixes
-**Phase 3**: format, rename, organize imports
-**Phase 4**: run tests, execute code
+1. **rename_symbol** - LSP-powered safe refactoring (high-value)
+2. **extract_function** - Smart code extraction (medium-value)
 
-**Quality**: Custom exceptions, logging, metrics
+---
+
+## Removed Features
+
+The following have been **removed** as low-value (agents can use shell directly):
+- Text/regex search → Use `rg`
+- Test execution → Use `pytest`/`cargo test`
+- Git operations → Use `git stash`/`git diff`
+- Shell commands → Direct shell access
+- Workspace utilities → Use standard tools
+
+See [User Guide](USER_GUIDE.md) for detailed rationale and tool documentation.
 
 ---
 

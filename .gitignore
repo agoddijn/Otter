@@ -19,6 +19,8 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+.env
+mcp.json
 
 # Virtual environments
 venv/
@@ -50,3 +52,10 @@ Thumbs.db
 # Project specific
 node_modules/
 uv.lock
+
+# Temporary work (notes, drafts, analysis)
+tmp/
+
+# Generated documentation
+site/
+.cache/

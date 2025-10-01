@@ -10,8 +10,8 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-from cli_ide.neovim.client import NeovimClient
-from cli_ide.services.analysis import AnalysisService
+from otter.neovim.client import NeovimClient
+from otter.services.analysis import AnalysisService
 
 
 class TestAnalyzeDependenciesIntegration:
