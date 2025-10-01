@@ -47,11 +47,12 @@ class TestGetDiagnostics:
 
         result = await service.get_diagnostics(file="test.py")
 
-        assert len(result) > 0
-        assert all(isinstance(d, Diagnostic) for d in result)
-        assert result[0].severity == "error"
+        assert result.total_count > 0
+        assert len(result.diagnostics) > 0
+        assert all(isinstance(d, Diagnostic) for d in result.diagnostics)
+        assert result.diagnostics[0].severity == "error"
         # Resolve both paths to handle symlinks (e.g., /var vs /private/var on macOS)
-        assert Path(result[0].file).resolve() == test_file.resolve()
+        assert Path(result.diagnostics[0].file).resolve() == test_file.resolve()
 
     @pytest.mark.asyncio
     async def test_get_diagnostics_filter_by_severity(self, temp_project_dir: Path):
@@ -94,8 +95,8 @@ class TestGetDiagnostics:
         # Get only errors
         result = await service.get_diagnostics(file="test.py", severity=["error"])
 
-        assert len(result) == 1
-        assert result[0].severity == "error"
+        assert len(result.diagnostics) == 1
+        assert result.diagnostics[0].severity == "error"
 
     @pytest.mark.asyncio
     async def test_get_diagnostics_multiple_severities(self, temp_project_dir: Path):
@@ -147,9 +148,9 @@ class TestGetDiagnostics:
             file="test.py", severity=["error", "warning"]
         )
 
-        assert len(result) == 2
-        assert result[0].severity == "error"
-        assert result[1].severity == "warning"
+        assert len(result.diagnostics) == 2
+        assert result.diagnostics[0].severity == "error"
+        assert result.diagnostics[1].severity == "warning"
 
     @pytest.mark.asyncio
     async def test_get_all_diagnostics(self, temp_project_dir: Path):
@@ -191,9 +192,9 @@ class TestGetDiagnostics:
         # Get diagnostics from all buffers (file=None)
         result = await service.get_diagnostics(file=None)
 
-        assert len(result) == 2
-        assert "file1.py" in result[0].file
-        assert "file2.py" in result[1].file
+        assert len(result.diagnostics) == 2
+        assert "file1.py" in result.diagnostics[0].file
+        assert "file2.py" in result.diagnostics[1].file
 
     @pytest.mark.asyncio
     async def test_get_diagnostics_starts_nvim_if_not_running(
@@ -244,6 +245,6 @@ class TestGetDiagnostics:
         # Use relative path
         result = await service.get_diagnostics(file="src/test.py")
 
-        assert len(result) > 0
+        assert len(result.diagnostics) > 0
         # Resolve both paths to handle symlinks
-        assert Path(result[0].file).resolve() == test_file.resolve()
+        assert Path(result.diagnostics[0].file).resolve() == test_file.resolve()

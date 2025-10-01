@@ -15,7 +15,6 @@ from ..models.responses import (
     ChangeSummary,
     CodeSummary,
     ErrorExplanation,
-    ReviewIssue,
     ReviewResult,
 )
 
@@ -99,17 +98,18 @@ class AIService:
             raise RuntimeError(f"Failed to read {file}: {e}")
         # Determine model tier and max tokens based on detail level
         if detail_level == "brief":
-            tier = ModelTier.FAST
-            max_tokens = 150
-            instruction = "Summarize this code in 1-3 clear sentences."
-        else:
             tier = ModelTier.CAPABLE
-            max_tokens = 500
+            max_tokens = 2000  # High limit to avoid truncation
+            instruction = "Summarize this code in EXACTLY 1-3 sentences. Be concise."
+        else:
+            # Use advanced model for detailed analysis
+            tier = ModelTier.ADVANCED
+            max_tokens = 2000  # High limit to avoid truncation
             instruction = (
-                "Provide a detailed summary of this code including:\n"
-                "1. Main purpose (2-3 sentences)\n"
-                "2. Key components (classes, functions, main logic)\n"
-                "3. Overall complexity assessment (low/medium/high)"
+                "Provide a structured summary:\n"
+                "1. Purpose: 2-3 sentences\n"
+                "2. Key components: 3-5 items, one line each\n"
+                "3. Complexity: One word (low/medium/high) + 1 sentence why"
             )
         
         # Build prompt
@@ -124,37 +124,18 @@ File: {file}
 
 Respond in a clear, technical style. Focus on what the code does, not how it's structured."""
         
-        # Get LLM response
-        response = await self.llm.complete(
+        # Get LLM response - trust the model to follow the prompt structure
+        summary = await self.llm.complete(
             prompt=prompt,
             tier=tier,
             max_tokens=max_tokens,
             temperature=0.3,  # Low temperature for factual summarization
         )
         
-        # Parse response for detailed summaries
-        key_components: Optional[List[str]] = None
-        complexity: Optional[Literal["low", "medium", "high"]] = None
-        
-        if detail_level == "detailed":
-            # Try to extract structured data from response
-            lines = response.strip().split("\n")
-            if any("low" in line.lower() or "medium" in line.lower() or "high" in line.lower() for line in lines):
-                for line in lines:
-                    if "complexity" in line.lower():
-                        if "low" in line.lower():
-                            complexity = "low"
-                        elif "high" in line.lower():
-                            complexity = "high"
-                        else:
-                            complexity = "medium"
-        
         return CodeSummary(
             file=file,
-            summary=response.strip(),
+            summary=summary,
             detail_level=detail_level,
-            key_components=key_components,
-            complexity=complexity,
         )
     
     async def summarize_changes(
@@ -239,10 +220,10 @@ Respond in a clear, technical style. Focus on what the code does, not how it's s
             )
         # Use capable model for change analysis
         tier = ModelTier.CAPABLE
-        max_tokens = 400
+        max_tokens = 2000  # High limit to avoid truncation
         
         # Build prompt
-        prompt = f"""Summarize the changes made to this code file.
+        prompt = f"""Summarize the changes to this file:
 
 File: {file}
 
@@ -258,54 +239,26 @@ NEW VERSION:
 {"..." if len(new_content) > 2500 else ""}
 ```
 
-Provide:
+Provide exactly these sections:
 1. Summary: What changed and why (2-3 sentences)
-2. Change types: List types (e.g., "refactor", "bugfix", "feature", "breaking change")
-3. Breaking changes: List any breaking changes (or "none")
-4. Affected functionality: What functionality is impacted
+2. Change types: Comma-separated (e.g., "refactor, bugfix, feature")
+3. Breaking changes: List or "None"
+4. Affected functionality: 1 sentence
 
-Be concise and technical. Focus on impact, not implementation details."""
+Be concise and technical."""
         
-        # Get LLM response
-        response = await self.llm.complete(
+        # Get LLM response - trust the model to follow the prompt structure
+        summary = await self.llm.complete(
             prompt=prompt,
             tier=tier,
             max_tokens=max_tokens,
             temperature=0.3,
         )
         
-        # Parse response (simple extraction for now)
-        lines = response.strip().split("\n")
-        summary_text = response.split("Change types:")[0].strip() if "Change types:" in response else response.strip()
-        
-        # Extract change types
-        changes_type: List[str] = []
-        if "refactor" in response.lower():
-            changes_type.append("refactor")
-        if "bugfix" in response.lower() or "bug fix" in response.lower():
-            changes_type.append("bugfix")
-        if "feature" in response.lower():
-            changes_type.append("feature")
-        if "breaking" in response.lower():
-            changes_type.append("breaking change")
-        
-        # Extract breaking changes
-        breaking_changes: List[str] = []
-        if "breaking" in response.lower() and "none" not in response.lower():
-            # Try to extract breaking changes section
-            for i, line in enumerate(lines):
-                if "breaking" in line.lower():
-                    # Next few lines might have details
-                    for j in range(i+1, min(i+4, len(lines))):
-                        if lines[j].strip() and not lines[j].strip().startswith(("Summary", "Change", "Affected")):
-                            breaking_changes.append(lines[j].strip())
-        
         return ChangeSummary(
             file=file,
-            summary=summary_text[:500],  # Limit summary length
-            changes_type=changes_type if changes_type else ["unknown"],
-            breaking_changes=breaking_changes,
-            affected_functionality=[],  # TODO: Extract from response
+            summary=summary,
+            git_ref=git_ref,
         )
     
     async def quick_review(
@@ -354,13 +307,13 @@ Be concise and technical. Focus on impact, not implementation details."""
             raise RuntimeError(f"Failed to read {file}: {e}")
         # Use capable model for code review
         tier = ModelTier.CAPABLE
-        max_tokens = 600
+        max_tokens = 2000  # High limit to avoid truncation
         
         # Build focus areas
         focus_areas = focus if focus else ["security", "bugs", "performance"]
         focus_str = ", ".join(focus_areas)
         
-        # Build prompt
+        # Build prompt - clear format but trust the model to follow it
         prompt = f"""Quick code review focusing on: {focus_str}
 
 File: {file}
@@ -370,81 +323,26 @@ File: {file}
 {"..." if len(content) > 4000 else ""}
 ```
 
-Find obvious issues ONLY. Format each issue exactly like this:
+Review the code and provide:
+1. Overall assessment (1-2 sentences)
+2. Issues found (if any), formatted as:
+   - CRITICAL: [description] (line XX) - for security/correctness issues
+   - WARNING: [description] (line XX) - for bugs or bad practices
+   - SUGGESTION: [description] (line XX) - for improvements
 
-CRITICAL: [issue description] (line XX)
-WARNING: [issue description] (line XX)
-SUGGESTION: [issue description] (line XX)
-
-Where XX is the actual line number. Always include (line XX) for every issue.
-
-Be concise. Only report clear issues, not style preferences.
-If code looks good, say "Code looks good - no obvious issues found."""
+Keep it concise. Max 5 issues. If code looks good, just say so."""
         
-        # Get LLM response
-        response = await self.llm.complete(
+        # Get LLM response - trust the model to structure it properly
+        review = await self.llm.complete(
             prompt=prompt,
             tier=tier,
             max_tokens=max_tokens,
             temperature=0.2,  # Low temperature for consistent reviews
         )
         
-        # Parse response to extract issues
-        issues: List[ReviewIssue] = []
-        
-        # Enhanced parsing with better line number extraction
-        import re
-        lines = response.strip().split("\n")
-        
-        for line in lines:
-            line_stripped = line.strip()
-            if not line_stripped:
-                continue
-            
-            # Match pattern: SEVERITY: message (line XX)
-            match = re.match(r'(CRITICAL|WARNING|SUGGESTION):\s*(.+?)(?:\s*\(line\s+(\d+)\))?', line_stripped, re.IGNORECASE)
-            
-            if match:
-                severity = match.group(1).lower()
-                message = match.group(2).strip()
-                line_num_str = match.group(3)
-                line_num = int(line_num_str) if line_num_str else None
-                
-                # If line number wasn't in parentheses, try to extract from message
-                if not line_num:
-                    # Try patterns like "line XX" or "on line XX" or "at line XX"
-                    line_match = re.search(r'(?:at |on |line )\s*(\d+)', message, re.IGNORECASE)
-                    if line_match:
-                        line_num = int(line_match.group(1))
-                
-                # Determine category from focus areas
-                category = "general"
-                for focus_area in focus_areas:
-                    if focus_area.lower() in message.lower():
-                        category = focus_area
-                        break
-                
-                issues.append(ReviewIssue(
-                    severity=severity,
-                    category=category,
-                    line=line_num,
-                    message=message,
-                    suggestion=None
-                ))
-        
-        # Extract overall assessment
-        overall = "No critical issues found."
-        if "looks good" in response.lower() or "no issues" in response.lower():
-            overall = "Code looks good - no obvious issues found."
-        elif issues:
-            critical_count = sum(1 for i in issues if i.severity == "critical")
-            warning_count = sum(1 for i in issues if i.severity == "warning")
-            overall = f"Found {critical_count} critical issue(s) and {warning_count} warning(s)."
-        
         return ReviewResult(
             file=file,
-            overall_assessment=overall,
-            issues=issues,
+            review=review,
             focus_areas=focus_areas,
         )
     
@@ -468,12 +366,12 @@ If code looks good, say "Code looks good - no obvious issues found."""
         Returns:
             ErrorExplanation with explanation, causes, and fixes
         """
-        # Use fast model for error explanation
-        tier = ModelTier.FAST
-        max_tokens = 300
+        # Use capable model for error explanation
+        tier = ModelTier.CAPABLE
+        max_tokens = 2000  # High limit to avoid truncation
         
         # Build prompt
-        prompt = f"""Explain this error message in simple terms.
+        prompt = f"""Explain this error message clearly and completely.
 
 Error:
 ```
@@ -491,65 +389,24 @@ Context ({context_file}):
 """
         
         prompt += """
-Provide:
+Explain in a clear, structured way:
 1. What the error means (1-2 sentences)
 2. Likely causes (2-3 bullet points)
-3. How to fix it (2-3 bullet points)
+3. How to fix it (2-3 actionable steps)
 
-Be practical and actionable."""
+Be practical and concise."""
         
-        # Get LLM response
-        response = await self.llm.complete(
+        # Get LLM response - trust the model to structure it properly
+        explanation = await self.llm.complete(
             prompt=prompt,
             tier=tier,
             max_tokens=max_tokens,
             temperature=0.3,
         )
         
-        # Parse response
-        lines = response.strip().split("\n")
-        
-        # Extract error type from error message
-        error_type = error_message.split(":")[0].strip() if ":" in error_message else "Error"
-        
-        # Extract explanation (first few lines)
-        explanation = response.split("Likely causes")[0].strip() if "Likely causes" in response else response.split("\n\n")[0].strip()
-        
-        # Extract causes and fixes
-        likely_causes = []
-        suggested_fixes = []
-        
-        in_causes = False
-        in_fixes = False
-        
-        for line in lines:
-            line_stripped = line.strip()
-            
-            if "likely cause" in line.lower() or "causes:" in line.lower():
-                in_causes = True
-                in_fixes = False
-                continue
-            elif "fix" in line.lower() or "solution" in line.lower():
-                in_fixes = True
-                in_causes = False
-                continue
-            
-            if in_causes and line_stripped and (line_stripped.startswith(("-", "•", "*")) or line_stripped[0].isdigit()):
-                likely_causes.append(line_stripped.lstrip("-•*0123456789. "))
-            elif in_fixes and line_stripped and (line_stripped.startswith(("-", "•", "*")) or line_stripped[0].isdigit()):
-                suggested_fixes.append(line_stripped.lstrip("-•*0123456789. "))
-        
-        # Fallback if parsing didn't work
-        if not likely_causes:
-            likely_causes = ["See explanation above"]
-        if not suggested_fixes:
-            suggested_fixes = ["See explanation above"]
-        
         return ErrorExplanation(
-            error_type=error_type,
-            explanation=explanation[:500],
-            likely_causes=likely_causes[:5],
-            suggested_fixes=suggested_fixes[:5],
+            explanation=explanation,
+            error_message=error_message,
             context_file=context_file,
             context_line=context_lines[0] if context_lines else None,
         )
@@ -655,25 +512,25 @@ Be practical and actionable."""
                 logger.warning(f"Failed to get references for symbol explanation: {e}")
         
         # 3. Build prompt
-        prompt = f"""Explain this code symbol in detail:
+        prompt = f"""Explain this code symbol:
 
 Definition:
 {hover_info}
 {references_context}
 
 Provide:
-1. What this symbol is (function/class/variable/etc.)
-2. What it does and its purpose
-3. How and where it is used in the codebase
-4. Any important patterns or conventions
+1. What it is: 1 sentence (function/class/variable/etc.)
+2. What it does: 2-3 sentences
+3. How it's used: 1-2 sentences
+4. Patterns/conventions: 1 sentence (if applicable)
 
-Be concise but comprehensive (3-5 sentences)."""
+Total: 4-6 sentences."""
         
-        # 4. Get LLM explanation
+        # 4. Get LLM explanation - use advanced model for semantic understanding
         response = await self.llm.complete(
             prompt=prompt,
-            tier=ModelTier.CAPABLE,
-            max_tokens=400,
+            tier=ModelTier.ADVANCED,
+            max_tokens=2000,  # High limit to avoid truncation
             temperature=0.3,
         )
         

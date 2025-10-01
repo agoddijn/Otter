@@ -349,48 +349,31 @@ class EvaluateResult:
 class CodeSummary:
     """Summary of code content."""
     file: str
-    summary: str
+    summary: str  # Full LLM response - structured by prompt
     detail_level: Literal["brief", "detailed"]
-    key_components: Optional[List[str]] = None  # For detailed summaries
-    complexity: Optional[Literal["low", "medium", "high"]] = None
 
 
 @dataclass
 class ChangeSummary:
     """Summary of code changes (diff)."""
     file: str
-    summary: str
-    changes_type: List[str]  # e.g., ["refactor", "bugfix", "feature"]
-    breaking_changes: List[str] = field(default_factory=list)
-    affected_functionality: List[str] = field(default_factory=list)
-
-
-@dataclass
-class ReviewIssue:
-    """Issue found during code review."""
-    severity: Literal["critical", "warning", "suggestion"]
-    category: str  # e.g., "security", "performance", "bugs", "style"
-    line: Optional[int]
-    message: str
-    suggestion: Optional[str] = None
+    summary: str  # Full LLM response - structured by prompt
+    git_ref: Optional[str] = None
 
 
 @dataclass
 class ReviewResult:
     """Result of quick code review."""
     file: str
-    overall_assessment: str
-    issues: List[ReviewIssue]
+    review: str  # Full LLM response - structured by prompt
     focus_areas: List[str]  # What was reviewed
 
 
 @dataclass
 class ErrorExplanation:
     """Explanation of an error message."""
-    error_type: str
-    explanation: str
-    likely_causes: List[str]
-    suggested_fixes: List[str]
+    explanation: str  # Full LLM response - structured by prompt
+    error_message: str  # Original error for reference
     context_file: Optional[str] = None
     context_line: Optional[int] = None
 
@@ -434,7 +417,6 @@ __all__ = [
     "EvaluateResult",
     "CodeSummary",
     "ChangeSummary",
-    "ReviewIssue",
     "ReviewResult",
     "ErrorExplanation",
 ]

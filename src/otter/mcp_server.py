@@ -5,7 +5,10 @@ Exposes IDE functionality as MCP tools using FastMCP.
 
 from __future__ import annotations
 
+import asyncio
+import atexit
 import os
+import signal
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
@@ -75,6 +78,44 @@ async def get_ide_server() -> CliIdeServer:
 def get_project_path() -> str:
     """Get the current project path."""
     return _project_path or os.getenv("IDE_PROJECT_PATH") or os.getcwd()
+
+
+def _cleanup_server() -> None:
+    """Clean up the IDE server on exit.
+    
+    This ensures the Neovim process is properly terminated when Claude Desktop closes.
+    """
+    global _ide_server
+    if _ide_server is not None:
+        try:
+            # Run cleanup in a new event loop since we might be called from atexit
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(_ide_server.stop())
+            finally:
+                loop.close()
+        except Exception:
+            # Best effort cleanup - ignore errors during shutdown
+            pass
+        finally:
+            _ide_server = None
+
+
+def _setup_cleanup_handlers() -> None:
+    """Set up signal handlers and atexit hooks for cleanup."""
+    # Register atexit handler for normal exit
+    atexit.register(_cleanup_server)
+    
+    # Register signal handlers for SIGTERM and SIGINT
+    def signal_handler(signum, frame):
+        _cleanup_server()
+        # Re-raise the signal to allow normal termination
+        signal.signal(signum, signal.SIG_DFL)
+        signal.raise_signal(signum)
+    
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
 
 
 def _to_dict(obj: Any) -> Any:
@@ -908,6 +949,9 @@ def main():
     """
     import sys
 
+    # Set up cleanup handlers FIRST to ensure proper shutdown
+    _setup_cleanup_handlers()
+
     # Allow setting project path from command line argument
     if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
         project_path = sys.argv[1]
@@ -929,6 +973,7 @@ def main():
 
     # FastMCP handles the server lifecycle and stdio communication
     # Just run mcp.run() which will start the server
+    # Cleanup will happen automatically via atexit and signal handlers
     mcp.run()
 
 
