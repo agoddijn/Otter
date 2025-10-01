@@ -20,7 +20,7 @@ async def test_claude_4_models():
     
     if "anthropic" not in config.get_available_providers():
         print("❌ ANTHROPIC_API_KEY not configured")
-        print("   Run with: make doppler-run CMD='uv run python scripts/validate_claude_4_models.py'")
+        print("   Add your API key to .env file (copy from .env.example)")
         return False
     
     print("✓ Anthropic API key found")

@@ -64,18 +64,17 @@ These tools exist to **offload context management** from the calling agent:
 #### Dependencies
 - `litellm>=1.30.0` - Multi-provider LLM client
 - `python-dotenv>=1.0.0` - Environment variable loading
-- `doppler-env>=0.3.1` (dev) - Secrets management
 
 #### Configuration
 ```bash
+# Copy .env.example to .env and add your API keys
+cp .env.example .env
+
 # Check configured providers
 make llm-info
 
 # Test AI features
 make test-llm
-
-# Run with Doppler secrets
-make doppler-run CMD="your command"
 ```
 
 ### To Be Added

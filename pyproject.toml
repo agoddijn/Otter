@@ -22,7 +22,6 @@ otter-server = "otter.mcp_server:main"
 [dependency-groups]
 dev = [
     "debugpy>=1.8.0",  # Required for DAP Python debugging
-    "doppler-env>=0.3.1",  # Doppler secrets management
     "mypy>=1.18.2",
     "pytest>=8.4.2",
     "pytest-asyncio>=1.2.0",

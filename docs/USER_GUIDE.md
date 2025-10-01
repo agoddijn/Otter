@@ -149,9 +149,9 @@ result = await session.call_tool("inspect_state", {
 - Check `configs/lua/dap_config.lua`
 
 **AI features not working?**
-- Set up an LLM API key: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, etc.
+- Set up an LLM API key in `.env` file (copy from `.env.example`)
+- Add your keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, etc.
 - Check configuration: `make llm-info`
-- Using Doppler? Run with: `make doppler-run CMD="..."`
 
 **For complete API reference with parameters, returns, and examples:**  
 Run `make docs` and visit http://127.0.0.1:8000

@@ -75,7 +75,7 @@ class LLMConfig:
         Model identifiers are current as of October 2024.
         
         To verify/update model identifiers:
-        - Run: make doppler-run CMD="uv run python scripts/validate_claude_4_models.py"
+        - Run: uv run python scripts/validate_claude_4_models.py
         - Check official docs:
           • Anthropic: https://docs.anthropic.com/en/docs/about-claude/models
           • OpenAI: https://platform.openai.com/docs/models
@@ -238,4 +238,3 @@ class LLMConfig:
         """String representation showing available providers."""
         available = self.get_available_providers()
         return f"LLMConfig(available_providers={available})"
-

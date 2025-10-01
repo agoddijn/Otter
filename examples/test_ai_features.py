@@ -8,7 +8,8 @@ This script demonstrates the AI features for context compression:
 4. explain_error - Interpret errors
 
 Usage:
-    # Requires LLM API key (configured via Doppler or .env)
+    # Requires LLM API key (configured via .env file)
+    # Copy .env.example to .env and add your API keys
     make test-llm  # or
     python examples/test_ai_features.py
 """
@@ -125,7 +126,7 @@ async def main():
         print(f"   ✅ AI service ready (providers: {ai.llm.get_available_providers()})")
     except Exception as e:
         print(f"   ❌ Failed to initialize: {e}")
-        print("\n   Please configure LLM API keys via Doppler or .env")
+        print("\n   Please configure LLM API keys in .env file (copy from .env.example)")
         return
     
     # Test 1: Summarize Code (Brief)

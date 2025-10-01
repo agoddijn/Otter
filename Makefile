@@ -1,17 +1,16 @@
 .PHONY: help install dev inspect run test lint format clean check-deps install-deps bump-version docs docs-serve docs-build
-.PHONY: test-llm llm-test llm-info secrets-check doppler-setup doppler-run
+.PHONY: test-llm llm-test llm-info secrets-check
 
 # Configuration
 PROJECT ?= $(CURDIR)
-USE_DOPPLER ?= yes  # Set to 'no' to disable Doppler (USE_DOPPLER=no)
 
-# Doppler wrapper - prepends doppler run if USE_DOPPLER=yes
-ifneq ($(USE_DOPPLER),no)
-    DOPPLER_CMD = DOPPLER_ENV=1 doppler run -- env
-    DOPPLER_STATUS = ✓ Using Doppler for secrets
+# Check if .env file exists and load it
+ifneq (,$(wildcard .env))
+    include .env
+    export
+    ENV_STATUS = ✓ Using .env file
 else
-    DOPPLER_CMD = env
-    DOPPLER_STATUS = ✗ Doppler disabled
+    ENV_STATUS = ⚠ No .env file found
 endif
 
 help: ## Show this help message
@@ -20,7 +19,7 @@ help: ## Show this help message
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo ""
 	@echo "📦 Setup & Installation"
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install|check|doppler-setup)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install|check)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "🚀 Development"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(dev|run|inspect)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -40,17 +39,20 @@ help: ## Show this help message
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo "Options:"
 	@echo "  PROJECT=/path/to/project      Set project path (default: current directory)"
-	@echo "  USE_DOPPLER=yes|no            Enable/disable Doppler (default: yes)"
 	@echo ""
 	@echo "Current Config:"
 	@echo "  Project:  $(PROJECT)"
-	@echo "  Doppler:  $(DOPPLER_STATUS)"
+	@echo "  .env:     $(ENV_STATUS)"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make dev PROJECT=/path/to/my-project"
 	@echo "  make test-llm                          # Test LLM infrastructure"
 	@echo "  make secrets-check                     # Check configured providers"
-	@echo "  make run USE_DOPPLER=no                # Run without Doppler"
+	@echo ""
+	@echo "Setup:"
+	@echo "  1. Copy .env.example to .env"
+	@echo "  2. Add your API keys to .env"
+	@echo "  3. Run make dev or make run"
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 install: ## Install Python dependencies
@@ -78,32 +80,17 @@ install-deps: ## Install system dependencies (macOS only)
 	@echo ""
 	@echo "Now run: make install  # to install Python dependencies"
 
-doppler-setup: ## Configure Doppler for this project
-	@echo "Setting up Doppler..."
-	@command -v doppler >/dev/null 2>&1 || { echo "❌ Doppler CLI not installed. Install from: https://docs.doppler.com/docs/install-cli"; exit 1; }
-	doppler setup
-	@echo ""
-	@echo "✅ Doppler configured!"
-	@echo "Add your LLM API keys with:"
-	@echo "  doppler secrets set ANTHROPIC_API_KEY 'your-key'"
-	@echo "  doppler secrets set OPENAI_API_KEY 'your-key'"
-	@echo "  doppler secrets set GOOGLE_API_KEY 'your-key'"
-
 dev: ## Run MCP server in development mode with inspector
 	@echo "Starting MCP inspector for project: $(PROJECT)"
-	@echo "Doppler: $(DOPPLER_STATUS)"
-	$(DOPPLER_CMD) PYTHONPATH=src IDE_PROJECT_PATH=$(PROJECT) uv run mcp dev src/main.py
+	@echo ".env: $(ENV_STATUS)"
+	PYTHONPATH=src IDE_PROJECT_PATH=$(PROJECT) uv run mcp dev src/main.py
 
 inspect: dev ## Alias for dev (run with MCP inspector)
 
 run: ## Run MCP server in production mode
 	@echo "Starting MCP server for project: $(PROJECT)"
-	@echo "Doppler: $(DOPPLER_STATUS)"
-	$(DOPPLER_CMD) PYTHONPATH=src IDE_PROJECT_PATH=$(PROJECT) uv run python -m otter.mcp_server
-
-doppler-run: ## Generic Doppler command runner (usage: make doppler-run CMD="your command")
-	@test -n "$(CMD)" || { echo "Usage: make doppler-run CMD=\"your command\""; exit 1; }
-	$(DOPPLER_CMD) $(CMD)
+	@echo ".env: $(ENV_STATUS)"
+	PYTHONPATH=src IDE_PROJECT_PATH=$(PROJECT) uv run python -m otter.mcp_server
 
 test: ## Run all tests
 	PYTHONPATH=src uv run pytest tests/
@@ -154,14 +141,14 @@ docs: docs-serve ## Alias for docs-serve
 secrets-check: ## Check which LLM providers are configured
 	@echo "Checking LLM provider configuration..."
 	@echo ""
-	$(DOPPLER_CMD) PYTHONPATH=src uv run python scripts/check_llm_config.py
+	PYTHONPATH=src uv run python scripts/check_llm_config.py
 
 llm-info: secrets-check ## Alias for secrets-check
 
 test-llm: ## Test LLM infrastructure (requires API keys)
 	@echo "Testing LLM infrastructure..."
-	@echo "Doppler: $(DOPPLER_STATUS)"
+	@echo ".env: $(ENV_STATUS)"
 	@echo ""
-	$(DOPPLER_CMD) uv run python examples/test_llm_infrastructure.py
+	uv run python examples/test_llm_infrastructure.py
 
 llm-test: test-llm ## Alias for test-llm

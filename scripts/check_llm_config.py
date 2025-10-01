@@ -15,10 +15,12 @@ def main():
     if not providers:
         print("❌ No LLM providers configured!")
         print()
-        print("Configure via Doppler:")
-        print('  doppler secrets set ANTHROPIC_API_KEY "your-key"')
-        print('  doppler secrets set OPENAI_API_KEY "your-key"')
-        print('  doppler secrets set GOOGLE_API_KEY "your-key"')
+        print("Configure via .env file:")
+        print('  1. Copy .env.example to .env')
+        print('  2. Add your API keys to .env:')
+        print('     ANTHROPIC_API_KEY="your-key"')
+        print('     OPENAI_API_KEY="your-key"')
+        print('     GOOGLE_API_KEY="your-key"')
         return 1
     
     print("✅ LLM providers ready!")
