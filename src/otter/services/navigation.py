@@ -7,9 +7,12 @@ from urllib.parse import unquote, urlparse
 
 from ..models.responses import (
     Completion,
+    CompletionsResult,
     Definition,
+    FileReferences,
     HoverInfo,
     Reference,
+    ReferencesResult,
     SearchResult,
 )
 
@@ -28,14 +31,23 @@ class NavigationService:
 
         Args:
             symbol: Symbol name to find
-            file: Optional file context (if provided with line, searches at that position)
-            line: Optional line number (1-indexed) for context-aware search
+            file: Optional file path for context-aware resolution. Recommended when the symbol
+                  appears in multiple places or to ensure accurate resolution of imports.
+            line: Optional line number (1-indexed) for precise position-based search. When provided
+                  with file, uses LSP to find the definition at that exact location.
 
         Returns:
-            Definition object with location and metadata
+            Definition object with location and metadata including:
+            - file, line, column: Location of the definition
+            - symbol_name, symbol_type: Identified symbol information
+            - signature: Function/method signatures (null for classes, variables, properties)
+            - docstring: Extracted documentation if available
+            - context_lines: Surrounding code with line numbers for better understanding
+            - has_alternatives: True if multiple definitions were found (returns first)
 
         Raises:
             RuntimeError: If Neovim client not available or symbol not found
+            NotImplementedError: If file and line are not provided (name-only search not yet supported)
         """
         if not self.nvim_client:
             raise RuntimeError("Neovim client required for find_definition")
@@ -89,6 +101,9 @@ class NavigationService:
                 f"Definition not found for position {file}:{line}:{column}"
             )
 
+        # Track if there are multiple definitions (e.g., overloaded functions, multiple declarations)
+        has_alternatives = len(lsp_result) > 1
+        
         # Take first result (LSP can return multiple)
         location = lsp_result[0]
 
@@ -121,10 +136,13 @@ class NavigationService:
         # Extract symbol name and type from the definition line
         symbol_name, symbol_type = self._parse_symbol_info(def_line_text)
 
-        # Get context lines (3 before, 3 after)
+        # Get context lines (3 before, 3 after) with line numbers
         context_start = max(0, def_line - 4)
         context_end = min(len(lines), def_line + 3)
-        context_lines = [line.rstrip() for line in lines[context_start:context_end]]
+        context_lines = [
+            f"{context_start + i + 1}|{line.rstrip()}"
+            for i, line in enumerate(lines[context_start:context_end])
+        ]
 
         # Try to extract docstring (next few lines if they're comments/docstrings)
         docstring = self._extract_docstring(lines, def_line)
@@ -150,6 +168,7 @@ class NavigationService:
             docstring=docstring,
             signature=signature,
             context_lines=context_lines,
+            has_alternatives=has_alternatives,
         )
 
     def _uri_to_path(self, uri: str) -> str:
@@ -257,17 +276,25 @@ class NavigationService:
         file: Optional[str] = None,
         line: Optional[int] = None,
         scope: Literal["file", "package", "project"] = "project",
-    ) -> List[Reference]:
-        """Find all references to a symbol.
+        exclude_definition: bool = False,
+    ) -> ReferencesResult:
+        """Find all references to a symbol with enhanced formatting and grouping.
 
         Args:
             symbol: Symbol name to find references for
             file: Optional file context (required for LSP-based search)
             line: Optional line number (1-indexed) for position-based search
-            scope: Scope of search (currently only 'project' is fully supported via LSP)
+            scope: Search scope:
+                - "file": Only references in the same file as the symbol
+                - "package": Only references in the same package/module (Note: currently treated as "project")
+                - "project": All references across the entire workspace (default)
+            exclude_definition: If True, exclude the definition itself from results
 
         Returns:
-            List of Reference objects
+            ReferencesResult with:
+                - references: List of all Reference objects with context line numbers
+                - total_count: Total number of references found
+                - grouped_by_file: References grouped by file with per-file counts
 
         Raises:
             RuntimeError: If Neovim client not available or file/line not provided
@@ -281,6 +308,14 @@ class NavigationService:
                 "Please provide file and line for position-based search."
             )
 
+        # Normalize the input file path for comparison
+        input_file_path = Path(file) if Path(file).is_absolute() else self.project_path / file
+        resolved_input_file = input_file_path.resolve()
+        try:
+            rel_input_file = str(resolved_input_file.relative_to(self.project_path.resolve()))
+        except ValueError:
+            rel_input_file = str(file)
+
         # Find the symbol on the line to get the correct column
         column = await self._find_symbol_column(file, line, symbol)
 
@@ -288,7 +323,7 @@ class NavigationService:
         lsp_result = await self.nvim_client.lsp_references(file, line, column)
 
         if not lsp_result or len(lsp_result) == 0:
-            return []
+            return ReferencesResult(references=[], total_count=0, grouped_by_file=[])
 
         references = []
         for location in lsp_result:
@@ -316,7 +351,9 @@ class NavigationService:
                 if ref_line > len(lines):
                     continue
 
-                context = lines[ref_line - 1].strip()
+                # Get context with line number
+                context_line = lines[ref_line - 1].rstrip()
+                context = f"Line {ref_line}: {context_line}"
 
                 # Make file path relative to project if possible
                 try:
@@ -326,9 +363,20 @@ class NavigationService:
                 except ValueError:
                     rel_file = ref_file
 
+                # Determine if this is the definition
+                is_definition = (rel_file == rel_input_file and ref_line == line)
+
+                # Detect reference type based on context
+                ref_type = self._detect_reference_type(context_line, symbol)
+
                 references.append(
                     Reference(
-                        file=rel_file, line=ref_line, column=ref_column, context=context
+                        file=rel_file,
+                        line=ref_line,
+                        column=ref_column,
+                        context=context,
+                        is_definition=is_definition,
+                        reference_type=ref_type,
                     )
                 )
             except Exception:
@@ -336,20 +384,58 @@ class NavigationService:
                 continue
 
         # Apply scope filtering if needed
-        if scope == "file" and file:
-            # Filter to only references in the same file
-            file_path = (
-                Path(file) if Path(file).is_absolute() else self.project_path / file
-            )
-            resolved_file = file_path.resolve()
-            try:
-                rel_file = str(resolved_file.relative_to(self.project_path.resolve()))
-            except ValueError:
-                rel_file = str(file)
+        if scope == "file":
+            references = [ref for ref in references if ref.file == rel_input_file]
 
-            references = [ref for ref in references if ref.file == rel_file]
+        # Filter out definition if requested
+        if exclude_definition:
+            references = [ref for ref in references if not ref.is_definition]
 
-        return references
+        # Group references by file
+        file_groups: Dict[str, List[Reference]] = {}
+        for ref in references:
+            if ref.file not in file_groups:
+                file_groups[ref.file] = []
+            file_groups[ref.file].append(ref)
+
+        grouped_by_file = [
+            FileReferences(file=file_path, count=len(refs), references=refs)
+            for file_path, refs in sorted(file_groups.items())
+        ]
+
+        return ReferencesResult(
+            references=references,
+            total_count=len(references),
+            grouped_by_file=grouped_by_file,
+        )
+
+    def _detect_reference_type(self, context_line: str, symbol: str) -> Optional[str]:
+        """Detect the type of reference based on context.
+
+        Args:
+            context_line: The line of code containing the reference
+            symbol: The symbol being referenced
+
+        Returns:
+            Type of reference: "import", "type_hint", "usage", or None
+        """
+        context_stripped = context_line.strip()
+
+        # Check for imports
+        if any(keyword in context_stripped for keyword in ["import ", "from ", "require(", "use "]):
+            return "import"
+
+        # Check for type hints/annotations
+        if any(marker in context_stripped for marker in [": ", "-> ", "<", "extends ", "implements "]):
+            # More sophisticated check: see if symbol appears in type position
+            # This is a heuristic and may need refinement
+            if re.search(rf":\s*{re.escape(symbol)}\b", context_stripped) or \
+               re.search(rf"->\s*{re.escape(symbol)}\b", context_stripped) or \
+               re.search(rf"<{re.escape(symbol)}>", context_stripped):
+                return "type_hint"
+
+        # Default to usage
+        return "usage"
 
     async def search(
         self,
@@ -371,35 +457,196 @@ class NavigationService:
             "Semantic search (TreeSitter-based) may be added in future."
         )
 
-    async def get_hover_info(self, file: str, line: int, column: int) -> HoverInfo:
-        """Get hover information (type, docstring) for a symbol at a position.
+    async def get_hover_info(
+        self,
+        file: str,
+        symbol: Optional[str] = None,
+        line: Optional[int] = None,
+        column: Optional[int] = None,
+    ) -> HoverInfo:
+        """Get hover information (type, docstring) for a symbol.
+
+        Supports two usage patterns:
+        1. Symbol-based: Provide symbol name, optionally with line hint for disambiguation
+        2. Position-based: Provide exact line and column position
 
         Args:
             file: File path
-            line: Line number (1-indexed)
-            column: Column number (0-indexed or 1-indexed, we normalize)
+            symbol: Symbol name to find (e.g., "CliIdeServer", "find_definition")
+            line: Line number (1-indexed), required if symbol not provided, optional hint if symbol provided
+            column: Column number (0-indexed), required if symbol not provided
 
         Returns:
             HoverInfo with symbol name, type, docstring, and source file
 
         Raises:
+            ValueError: If neither symbol nor (line, column) provided
             RuntimeError: If Neovim client not available or hover info not found
+
+        Examples:
+            # Symbol-based (agent-friendly)
+            hover = await service.get_hover_info(file="server.py", symbol="CliIdeServer")
+            
+            # Position-based (precise)
+            hover = await service.get_hover_info(file="server.py", line=83, column=15)
+            
+            # Disambiguated (symbol near specific line)
+            hover = await service.get_hover_info(file="server.py", symbol="User", line=45)
         """
         if not self.nvim_client:
             raise RuntimeError("Neovim client required for get_hover_info")
 
-        # Get hover info from LSP
+        # Validate inputs
+        if symbol is None and (line is None or column is None):
+            raise ValueError(
+                "Must provide either 'symbol' or both 'line' and 'column'. "
+                "Examples: get_hover_info(file='x.py', symbol='MyClass') or "
+                "get_hover_info(file='x.py', line=10, column=5)"
+            )
+
+        # If symbol provided, find its position
+        if symbol is not None:
+            line, column = await self._find_symbol_position(file, symbol, line)
+
+        # Now we have line and column, proceed with position-based lookup
+        # Get hover info from LSP - try exact position first
         lsp_result = await self.nvim_client.lsp_hover(file, line, column)
 
+        # If no result at exact position, try nearby positions on the same line
         if not lsp_result:
-            raise RuntimeError(f"No hover information found at {file}:{line}:{column}")
+            lsp_result = await self._try_nearby_columns(file, line, column)
+            
+        if not lsp_result:
+            # Provide more specific error message
+            symbol_hint = f" for symbol '{symbol}'" if symbol else ""
+            raise RuntimeError(
+                f"No symbol found at {file}:{line}:{column}{symbol_hint}. "
+                f"Try positioning cursor directly on the symbol name. "
+                f"If the LSP server is still starting up, wait a moment and try again."
+            )
 
         # Parse LSP hover response
-        hover_info = self._parse_hover_response(lsp_result, file, line, column)
+        hover_info = await self._parse_hover_response(lsp_result, file, line, column)
 
         return hover_info
+    
+    async def _find_symbol_position(
+        self, file: str, symbol: str, line_hint: Optional[int] = None
+    ) -> tuple[int, int]:
+        """Find the position of a symbol in a file.
+        
+        Uses LSP document symbols to find the symbol. If line_hint is provided,
+        prefers symbols near that line for disambiguation.
+        
+        Args:
+            file: File path
+            symbol: Symbol name to find
+            line_hint: Optional line number hint for disambiguation (1-indexed)
+            
+        Returns:
+            Tuple of (line, column) for the symbol (1-indexed line, 0-indexed column)
+            
+        Raises:
+            RuntimeError: If symbol not found or multiple matches without line hint
+        """
+        # Get all symbols in the file using LSP
+        symbols = await self.nvim_client.lsp_document_symbols(file)
+        
+        if not symbols:
+            raise RuntimeError(
+                f"No symbols found in {file}. "
+                f"File may not be indexed yet or LSP server not ready."
+            )
+        
+        # Find matching symbols (search recursively through nested symbols)
+        matches = self._find_matching_symbols(symbols, symbol)
+        
+        if not matches:
+            raise RuntimeError(
+                f"Symbol '{symbol}' not found in {file}. "
+                f"Make sure the symbol name is spelled correctly."
+            )
+        
+        # If line hint provided, find closest match to that line
+        if line_hint is not None:
+            # Find the match closest to the line hint
+            matches.sort(key=lambda m: abs(m["line"] - line_hint))
+            best_match = matches[0]
+        elif len(matches) == 1:
+            best_match = matches[0]
+        else:
+            # Multiple matches, no hint - use first one but warn in error if it fails
+            best_match = matches[0]
+        
+        return best_match["line"], best_match["column"]
+    
+    def _find_matching_symbols(
+        self, symbols: List[Dict[str, Any]], target_name: str
+    ) -> List[Dict[str, int]]:
+        """Recursively search for symbols matching the target name.
+        
+        Args:
+            symbols: List of LSP DocumentSymbol dictionaries
+            target_name: Symbol name to match
+            
+        Returns:
+            List of dicts with 'line' and 'column' keys for each match
+        """
+        matches = []
+        
+        for symbol in symbols:
+            # Get symbol name
+            name = symbol.get("name", "")
+            
+            # Check if this symbol matches
+            if name == target_name:
+                # Extract position from range or location
+                if "range" in symbol:
+                    # DocumentSymbol format
+                    start = symbol["range"]["start"]
+                    matches.append({
+                        "line": start["line"] + 1,  # Convert to 1-indexed
+                        "column": start["character"],  # Keep 0-indexed
+                    })
+                elif "location" in symbol:
+                    # SymbolInformation format
+                    start = symbol["location"]["range"]["start"]
+                    matches.append({
+                        "line": start["line"] + 1,
+                        "column": start["character"],
+                    })
+            
+            # Recursively search children
+            if "children" in symbol:
+                matches.extend(self._find_matching_symbols(symbol["children"], target_name))
+        
+        return matches
+    
+    async def _try_nearby_columns(
+        self, file: str, line: int, column: int
+    ) -> Optional[Dict[str, Any]]:
+        """Try to find a symbol near the specified column.
+        
+        This makes hover more forgiving when the cursor is close but not exactly
+        on a symbol.
+        
+        Args:
+            file: File path
+            line: Line number (1-indexed)
+            column: Column number (0-indexed)
+            
+        Returns:
+            LSP hover result if found nearby, None otherwise
+        """
+        # Try a few positions to the left and right
+        for offset in [1, 2, -1, 3, -2, 4, -3]:
+            nearby_col = max(0, column + offset)
+            result = await self.nvim_client.lsp_hover(file, line, nearby_col)
+            if result:
+                return result
+        return None
 
-    def _parse_hover_response(
+    async def _parse_hover_response(
         self, lsp_hover: Dict[str, Any], file: str, line: int, column: int
     ) -> HoverInfo:
         """Parse LSP Hover response into our HoverInfo model.
@@ -438,13 +685,15 @@ class NavigationService:
         )
 
         # Try to get source file if it's an external symbol
-        source_file = self._extract_source_file(hover_text)
+        source_file = await self._get_source_file(hover_text, file, line, column)
 
         return HoverInfo(
             symbol=symbol_name,
             type=type_info,
             docstring=docstring,
             source_file=source_file,
+            line=line,
+            column=column,
         )
 
     def _extract_hover_parts(
@@ -499,7 +748,14 @@ class NavigationService:
                 break
 
             # Pattern: "def function_name(...)" or "async def function_name(...)"
-            match = re.match(r"(?:async\s+)?def\s+(\w+)", text_line)
+            # Match async keyword separately to avoid capturing it
+            match = re.match(r"async\s+def\s+(\w+)", text_line)
+            if match:
+                symbol_name = match.group(1)
+                break
+            
+            # Try regular function definition
+            match = re.match(r"def\s+(\w+)", text_line)
             if match:
                 symbol_name = match.group(1)
                 break
@@ -532,31 +788,82 @@ class NavigationService:
 
         return symbol_name, full_type, doc_part
 
-    def _extract_source_file(self, hover_text: str) -> Optional[str]:
-        """Try to extract source file path from hover text."""
-        # Some LSP servers include file paths in hover text
-        # Look for common patterns like "Defined in: /path/to/file.py"
-        match = re.search(r"(?:Defined in|From):\s*([^\s]+\.py)", hover_text)
+    async def _get_source_file(
+        self, hover_text: str, file: str, line: int, column: int
+    ) -> Optional[str]:
+        """Get source file for a symbol, trying multiple methods.
+        
+        First tries to extract from hover text, then uses LSP definition
+        as a fallback for imported symbols.
+        
+        Args:
+            hover_text: The hover text from LSP
+            file: Current file path
+            line: Line number (1-indexed)
+            column: Column number (0-indexed)
+            
+        Returns:
+            Source file path if found, None otherwise
+        """
+        # Try extracting from hover text first
+        match = re.search(r"(?:Defined in|From):\s*([^\s]+\.(?:py|js|ts|rs))", hover_text)
         if match:
             return match.group(1)
+        
+        # Fallback: Try to get definition location via LSP
+        # This helps for imported symbols
+        if self.nvim_client:
+            try:
+                definition = await self.nvim_client.lsp_definition(file, line, column)
+                if definition and len(definition) > 0:
+                    # Get the first definition's file
+                    def_file = definition[0].get("targetUri", "")
+                    if def_file:
+                        # Convert URI to file path
+                        if def_file.startswith("file://"):
+                            def_file = def_file[7:]  # Remove file:// prefix
+                        # Only return if it's different from current file (external symbol)
+                        if def_file != file:
+                            # Normalize path for response
+                            from otter.utils.path import normalize_path_for_response
+                            return normalize_path_for_response(def_file, self.project_path)
+            except Exception:
+                # If definition lookup fails, just return None
+                pass
+        
         return None
 
     async def get_completions(
-        self, file: str, line: int, column: int, context_lines: int = 10
-    ) -> List[Completion]:
+        self, file: str, line: int, column: int, max_results: int = 50
+    ) -> CompletionsResult:
         """Get context-aware code completions at a position.
+        
+        Returns intelligent code completion suggestions with proper ranking and filtering.
+        By default, limits results to top 50 most relevant completions to avoid overwhelming output.
         
         Args:
             file: File path
             line: Line number (1-indexed)
-            column: Column number (0-indexed, cursor position)
-            context_lines: Number of context lines (not used, kept for API compatibility)
+            column: Column number (0-indexed, cursor position - where the cursor would be for typing)
+            max_results: Maximum number of completions to return (default 50, 0 for unlimited)
             
         Returns:
-            List of Completion objects with suggestions
+            CompletionsResult with:
+                - completions: List of Completion objects, sorted by relevance
+                - total_count: Total number of completions available
+                - returned_count: Number of completions returned (may be less than total if truncated)
+                - truncated: True if results were limited by max_results
             
         Raises:
-            RuntimeError: If Neovim client not available or no completions found
+            RuntimeError: If Neovim client not available
+            
+        Examples:
+            # Get completions after typing "self."
+            result = await service.get_completions("file.py", line=10, column=9)
+            # Returns top 50 most relevant completions
+            
+            # Get unlimited completions (use with caution)
+            result = await service.get_completions("file.py", line=10, column=9, max_results=0)
         """
         if not self.nvim_client:
             raise RuntimeError("Neovim client required for get_completions")
@@ -568,8 +875,15 @@ class NavigationService:
         lsp_completions = await self.nvim_client.lsp_completion(str(file_path), line, column)
         
         if not lsp_completions or len(lsp_completions) == 0:
-            # Return empty list rather than raising error - no completions is valid
-            return []
+            # Return empty result rather than raising error - no completions is valid
+            return CompletionsResult(
+                completions=[],
+                total_count=0,
+                returned_count=0,
+                truncated=False
+            )
+        
+        total_count = len(lsp_completions)
         
         # Parse LSP completion items into our Completion model
         completions = []
@@ -577,9 +891,10 @@ class NavigationService:
             # LSP CompletionItem structure:
             # - label: str (the text to insert)
             # - kind: int (CompletionItemKind enum)
-            # - detail: Optional[str] (additional info)
-            # - documentation: Optional[str | MarkupContent]
+            # - detail: Optional[str] (additional info like type signature)
+            # - documentation: Optional[str | MarkupContent] (docstring/description)
             # - insertText: Optional[str] (text to insert, defaults to label)
+            # - sortText: Optional[str] (for sorting by relevance)
             
             label = item.get("label", "")
             if not label:
@@ -592,18 +907,71 @@ class NavigationService:
             kind_int = item.get("kind")
             kind = self._lsp_completion_kind_to_string(kind_int) if kind_int else None
             
-            # Get detail text
+            # Get detail text (type info, signature, etc.)
             detail = item.get("detail")
+            
+            # Extract documentation
+            documentation = self._extract_completion_documentation(item.get("documentation"))
+            
+            # Get sort text for ranking (LSP provides this for relevance ordering)
+            sort_text = item.get("sortText", label)
             
             completions.append(
                 Completion(
                     text=text,
                     kind=kind,
-                    detail=detail
+                    detail=detail,
+                    documentation=documentation,
+                    sort_text=sort_text
                 )
             )
         
-        return completions
+        # Sort by LSP-provided sort_text (which reflects relevance)
+        # LSP servers use sortText to rank by relevance, with more relevant items having
+        # lexicographically smaller sortText values
+        completions.sort(key=lambda c: c.sort_text or c.text)
+        
+        # Apply max_results limit if specified (0 means unlimited)
+        truncated = False
+        if max_results > 0 and len(completions) > max_results:
+            completions = completions[:max_results]
+            truncated = True
+        
+        returned_count = len(completions)
+        
+        return CompletionsResult(
+            completions=completions,
+            total_count=total_count,
+            returned_count=returned_count,
+            truncated=truncated
+        )
+    
+    def _extract_completion_documentation(self, doc: Optional[Any]) -> Optional[str]:
+        """Extract documentation string from LSP completion documentation field.
+        
+        LSP documentation can be:
+        - string: Plain text or markdown
+        - MarkupContent: {kind: "markdown" | "plaintext", value: string}
+        - null/None: No documentation available
+        
+        Args:
+            doc: Documentation field from LSP CompletionItem
+            
+        Returns:
+            Extracted documentation string or None
+        """
+        if not doc:
+            return None
+            
+        if isinstance(doc, str):
+            return doc
+            
+        if isinstance(doc, dict):
+            # MarkupContent format
+            if "value" in doc:
+                return doc["value"]
+                
+        return None
     
     def _lsp_completion_kind_to_string(self, kind: int) -> str:
         """Convert LSP CompletionItemKind integer to string.

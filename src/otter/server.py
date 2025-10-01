@@ -8,6 +8,7 @@ from .models.responses import (
     ChangeSummary,
     CodeSummary,
     Completion,
+    CompletionsResult,
     DebugSession,
     Definition,
     DependencyGraph,
@@ -19,11 +20,13 @@ from .models.responses import (
     HoverInfo,
     ProjectTree,
     Reference,
+    ReferencesResult,
     RenamePreview,
     RenameResult,
     ReviewResult,
     SearchResult,
     Symbol,
+    SymbolsResult,
 )
 from .neovim.client import NeovimClient
 from .services.ai import AIService
@@ -50,7 +53,9 @@ class CliIdeServer:
         self.navigation = NavigationService(
             nvim_client=self.nvim_client, project_path=self.project_path
         )  # type: ignore
-        self.refactoring = RefactoringService(nvim_client=self.nvim_client)  # type: ignore
+        self.refactoring = RefactoringService(
+            project_path=self.project_path, nvim_client=self.nvim_client
+        )  # type: ignore
         self.analysis = AnalysisService(
             nvim_client=self.nvim_client, project_path=self.project_path
         )  # type: ignore
@@ -91,8 +96,9 @@ class CliIdeServer:
         file: Optional[str] = None,
         line: Optional[int] = None,
         scope: Literal["file", "package", "project"] = "project",
-    ) -> List[Reference]:
-        return await self.navigation.find_references(symbol, file, line, scope)
+        exclude_definition: bool = False,
+    ) -> ReferencesResult:
+        return await self.navigation.find_references(symbol, file, line, scope, exclude_definition)
 
     async def search(
         self,
@@ -104,13 +110,19 @@ class CliIdeServer:
         return await self.navigation.search(query, search_type, file_pattern, scope)
 
     # Code Intelligence
-    async def get_hover_info(self, file: str, line: int, column: int) -> HoverInfo:
-        return await self.navigation.get_hover_info(file, line, column)
+    async def get_hover_info(
+        self,
+        file: str,
+        symbol: Optional[str] = None,
+        line: Optional[int] = None,
+        column: Optional[int] = None,
+    ) -> HoverInfo:
+        return await self.navigation.get_hover_info(file, symbol, line, column)
 
     async def get_completions(
-        self, file: str, line: int, column: int, context_lines: int = 10
-    ) -> List[Completion]:
-        return await self.navigation.get_completions(file, line, column, context_lines)
+        self, file: str, line: int, column: int, max_results: int = 50
+    ) -> CompletionsResult:
+        return await self.navigation.get_completions(file, line, column, max_results)
 
     # File & Project
     async def read_file(
@@ -131,14 +143,15 @@ class CliIdeServer:
         max_depth: int = 3,
         show_hidden: bool = False,
         include_sizes: bool = True,
+        exclude_patterns: Optional[List[str]] = None,
     ) -> ProjectTree:
         return await self.workspace.get_project_structure(
-            path, max_depth, show_hidden, include_sizes
+            path, max_depth, show_hidden, include_sizes, exclude_patterns
         )
 
     async def get_symbols(
         self, file: str, symbol_types: Optional[List[str]] = None
-    ) -> List[Symbol]:
+    ) -> SymbolsResult:
         return await self.workspace.get_symbols(file, symbol_types)
 
     # Refactoring

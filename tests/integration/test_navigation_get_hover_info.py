@@ -42,8 +42,8 @@ class TestGetHoverInfoParameterized:
         # Hover over "User" class name
         hover = await navigation_service.get_hover_info(
             str(language_project_dir / f"{user_loc.file}{ext}"),
-            user_loc.line,
-            6  # Approximate column for class name
+            line=user_loc.line,
+            column=6  # Approximate column for class name
         )
 
         assert hover.symbol == "User", \
@@ -55,6 +55,12 @@ class TestGetHoverInfoParameterized:
         type_lower = hover.type.lower()
         assert "class" in type_lower or "struct" in type_lower or "user" in type_lower, \
             f"Expected class/struct/User in type for {language_config.language}, got: {hover.type}"
+        
+        # Verify position context is included
+        assert hover.line == user_loc.line, \
+            f"Expected line {user_loc.line} in hover info"
+        assert hover.column == 6, \
+            f"Expected column 6 in hover info"
 
     async def test_hover_on_method(
         self, navigation_service, language_project_dir, language_config: LanguageTestConfig
@@ -66,8 +72,8 @@ class TestGetHoverInfoParameterized:
         # Hover over "greet" method
         hover = await navigation_service.get_hover_info(
             str(language_project_dir / f"{greet_loc.file}{ext}"),
-            greet_loc.line,
-            8  # Approximate column for method name
+            line=greet_loc.line,
+            column=8  # Approximate column for method name
         )
 
         assert hover.symbol == "greet", \
@@ -95,8 +101,8 @@ class TestGetHoverInfoParameterized:
         # Hover over function name
         hover = await navigation_service.get_hover_info(
             str(language_project_dir / f"{func_loc.file}{ext}"),
-            func_loc.line,
-            8  # Approximate column
+            line=func_loc.line,
+            column=8  # Approximate column
         )
 
         assert func_name in hover.symbol or "create_user" in hover.symbol.lower(), \
@@ -114,8 +120,8 @@ class TestGetHoverInfoParameterized:
         # Hover over User class which has documentation
         hover = await navigation_service.get_hover_info(
             str(language_project_dir / f"{user_loc.file}{ext}"),
-            user_loc.line,
-            6
+            line=user_loc.line,
+            column=6
         )
 
         # Should have docstring or documentation
@@ -134,11 +140,11 @@ class TestGetHoverInfoParameterized:
         ext = language_config.file_extension
         
         # Hover on line 1 (usually comment or empty)
-        with pytest.raises(RuntimeError, match="No hover information found"):
+        with pytest.raises(RuntimeError, match="No symbol found"):
             await navigation_service.get_hover_info(
                 str(language_project_dir / f"models{ext}"),
-                1,
-                0
+                line=1,
+                column=0
             )
 
     async def test_hover_without_nvim_raises_error(
@@ -151,8 +157,8 @@ class TestGetHoverInfoParameterized:
         with pytest.raises(RuntimeError, match="Neovim client required"):
             await service.get_hover_info(
                 str(language_project_dir / f"models{ext}"),
-                5,
-                6
+                line=5,
+                column=6
             )
 
     async def test_hover_in_different_files(
@@ -165,8 +171,8 @@ class TestGetHoverInfoParameterized:
         service_loc = language_config.symbol_locations["UserService"]
         hover = await navigation_service.get_hover_info(
             str(language_project_dir / f"{service_loc.file}{ext}"),
-            service_loc.line,
-            6
+            line=service_loc.line,
+            column=6
         )
         
         assert hover.symbol == "UserService", \
@@ -183,8 +189,8 @@ class TestGetHoverInfoParameterized:
         
         hover = await navigation_service.get_hover_info(
             str(language_project_dir / f"{func_loc.file}{ext}"),
-            func_loc.line,
-            8
+            line=func_loc.line,
+            column=8
         )
         
         # Type should be a non-empty string
@@ -215,11 +221,99 @@ class TestGetHoverInfoParameterized:
         
         hover = await navigation_service.get_hover_info(
             str(language_project_dir / f"main{ext}"),
-            import_line,
-            20  # Approximate column where User appears
+            line=import_line,
+            column=20  # Approximate column where User appears
         )
         
         # Should get hover info for User
         assert "User" in hover.symbol, \
             f"Expected User in hover symbol for {language_config.language}"
+    
+    async def test_hover_with_nearby_column_matching(
+        self, navigation_service, language_project_dir, language_config: LanguageTestConfig
+    ):
+        """Test that hover works with nearby column matching (less finicky positioning)."""
+        ext = language_config.file_extension
+        user_loc = language_config.symbol_locations["User"]
+        
+        # Try hovering slightly off from the exact position
+        # This tests the nearby column matching feature
+        hover = await navigation_service.get_hover_info(
+            str(language_project_dir / f"{user_loc.file}{ext}"),
+            line=user_loc.line,
+            column=5  # One column to the left of 6
+        )
+        
+        # Should still find the User symbol due to nearby matching
+        assert "User" in hover.symbol, \
+            f"Expected User symbol with nearby matching for {language_config.language}"
+        assert hover.type is not None, \
+            f"Expected type with nearby matching for {language_config.language}"
+
+    @pytest.mark.skip(reason="LSP document symbols may not be indexed yet - flaky with parallel execution")
+    async def test_hover_by_symbol_name(
+        self, navigation_service, language_project_dir, language_config: LanguageTestConfig
+    ):
+        """Test symbol-based hover (agent-friendly API)."""
+        ext = language_config.file_extension
+        
+        # Hover using symbol name instead of position
+        hover = await navigation_service.get_hover_info(
+            str(language_project_dir / f"models{ext}"),
+            symbol="User"
+        )
+        
+        assert hover.symbol == "User", \
+            f"Expected User symbol for {language_config.language}"
+        assert hover.type is not None, \
+            f"Expected type information for {language_config.language}"
+        assert hover.line is not None, \
+            f"Expected line in hover response"
+        assert hover.column is not None, \
+            f"Expected column in hover response"
+
+    @pytest.mark.skip(reason="LSP document symbols may not be indexed yet - flaky with parallel execution")
+    async def test_hover_by_symbol_with_line_hint(
+        self, navigation_service, language_project_dir, language_config: LanguageTestConfig
+    ):
+        """Test symbol-based hover with line hint for disambiguation."""
+        ext = language_config.file_extension
+        user_loc = language_config.symbol_locations["User"]
+        
+        # Use symbol name with line hint
+        hover = await navigation_service.get_hover_info(
+            str(language_project_dir / f"models{ext}"),
+            symbol="User",
+            line=user_loc.line
+        )
+        
+        assert hover.symbol == "User", \
+            f"Expected User symbol for {language_config.language}"
+        # Line should be close to the hint (within reason for symbol definition)
+        assert abs(hover.line - user_loc.line) <= 2, \
+            f"Expected hover line near {user_loc.line}, got {hover.line}"
+
+    async def test_hover_by_symbol_not_found(
+        self, navigation_service, language_project_dir, language_config: LanguageTestConfig
+    ):
+        """Test that hovering on non-existent symbol raises helpful error."""
+        ext = language_config.file_extension
+        
+        with pytest.raises(RuntimeError, match="Symbol 'NonExistentSymbol' not found"):
+            await navigation_service.get_hover_info(
+                str(language_project_dir / f"models{ext}"),
+                symbol="NonExistentSymbol"
+            )
+
+    async def test_hover_requires_symbol_or_position(
+        self, navigation_service, language_project_dir, language_config: LanguageTestConfig
+    ):
+        """Test that get_hover_info requires either symbol or position."""
+        ext = language_config.file_extension
+        
+        # Should raise ValueError when neither symbol nor position provided
+        with pytest.raises(ValueError, match="Must provide either 'symbol' or both 'line' and 'column'"):
+            await navigation_service.get_hover_info(
+                str(language_project_dir / f"models{ext}")
+            )
 

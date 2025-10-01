@@ -29,6 +29,8 @@ class TestReadFile:
         assert isinstance(result, FileContent)
         # Should include line numbers
         assert result.content == "1|line1\n2|line2\n3|line3"
+        assert result.total_lines == 3
+        assert result.language == "python"
         assert result.expanded_imports is None
         assert result.diagnostics is None
 
@@ -45,6 +47,7 @@ class TestReadFile:
 
         # Should include line numbers starting from line 2
         assert result.content == "2|line2\n3|line3\n4|line4"
+        assert result.total_lines == 5
 
     @pytest.mark.asyncio
     async def test_read_file_with_context_lines_without_nvim(
@@ -61,6 +64,7 @@ class TestReadFile:
 
         # Should get lines 2-5 (3-4 ± 1) with line numbers
         assert result.content == "2|line2\n3|line3\n4|line4\n5|line5"
+        assert result.total_lines == 7
 
     @pytest.mark.asyncio
     async def test_read_file_with_context_at_file_start(self, temp_project_dir: Path):
@@ -75,6 +79,7 @@ class TestReadFile:
 
         # Should start at line 1 with line number
         assert result.content.startswith("1|line1")
+        assert result.total_lines == 3
 
     @pytest.mark.asyncio
     async def test_read_nonexistent_file(self, temp_project_dir: Path):
@@ -97,6 +102,7 @@ class TestReadFile:
 
         # Should have line numbers
         assert result.content == "1|absolute path test"
+        assert result.total_lines == 1
 
     @pytest.mark.asyncio
     async def test_read_file_with_nvim(self, temp_project_dir: Path):
@@ -120,6 +126,45 @@ class TestReadFile:
         mock_nvim.read_buffer.assert_not_called()
         # Should have line numbers
         assert result.content == "1|nvim test\n2|line2"
+        assert result.total_lines == 2
+
+    @pytest.mark.asyncio
+    async def test_line_range_exceeds_file_length(self, temp_project_dir: Path):
+        """Test error when line range start exceeds file length."""
+        test_file = temp_project_dir / "test.py"
+        test_file.write_text("line1\nline2\nline3\n")
+
+        service = WorkspaceService(project_path=str(temp_project_dir))
+
+        # Try to read starting at line 100 of a 3-line file
+        with pytest.raises(ValueError, match="exceeds file length"):
+            await service.read_file("test.py", line_range=(100, 200))
+
+    @pytest.mark.asyncio
+    async def test_invalid_line_range_start_greater_than_end(self, temp_project_dir: Path):
+        """Test error when line range start > end."""
+        test_file = temp_project_dir / "test.py"
+        test_file.write_text("line1\nline2\nline3\n")
+
+        service = WorkspaceService(project_path=str(temp_project_dir))
+
+        # Invalid range: start > end
+        with pytest.raises(ValueError, match="must be >= start"):
+            await service.read_file("test.py", line_range=(10, 5))
+
+    @pytest.mark.asyncio
+    async def test_line_range_end_exceeds_file_is_capped(self, temp_project_dir: Path):
+        """Test that end line exceeding file length is capped (not an error)."""
+        test_file = temp_project_dir / "test.py"
+        test_file.write_text("line1\nline2\nline3\n")
+
+        service = WorkspaceService(project_path=str(temp_project_dir))
+
+        # Request lines 2-100, should return lines 2-3
+        result = await service.read_file("test.py", line_range=(2, 100))
+
+        assert result.content == "2|line2\n3|line3"
+        assert result.total_lines == 3
 
     @pytest.mark.asyncio
     async def test_extract_imports_python(self, temp_project_dir: Path):

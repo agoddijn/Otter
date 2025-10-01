@@ -26,15 +26,19 @@ class TestGetProjectStructure:
         assert result.root == str(temp_project_dir.resolve())
         assert isinstance(result.tree, dict)
         
-        # Check that we have the root directory
-        assert len(result.tree) == 1
-        root_name = temp_project_dir.name
-        assert root_name in result.tree
+        # Check metadata
+        assert result.file_count > 0
+        assert result.directory_count > 0
+        assert result.total_size > 0
         
-        # Check that it's a directory
-        root_entry = result.tree[root_name]
-        assert root_entry["type"] == "directory"
-        assert "children" in root_entry
+        # Tree should contain direct children (no root wrapper)
+        assert "src" in result.tree
+        assert "tests" in result.tree
+        assert "README.md" in result.tree
+        
+        # Check directory structure
+        assert result.tree["src"]["type"] == "directory"
+        assert "children" in result.tree["src"]
     
     @pytest.mark.asyncio
     async def test_hides_pycache(self, temp_project_dir: Path):
@@ -49,8 +53,7 @@ class TestGetProjectStructure:
         )
         
         # Navigate to src directory
-        root_name = temp_project_dir.name
-        src = result.tree[root_name]["children"]["src"]
+        src = result.tree["src"]
         
         # Verify __pycache__ is NOT in the children
         assert "__pycache__" not in src["children"]
@@ -68,19 +71,16 @@ class TestGetProjectStructure:
             include_sizes=False
         )
         
-        root_name = temp_project_dir.name
-        children = result.tree[root_name]["children"]
-        
         # Should see src, tests, README.md but not contents of src
-        assert "src" in children
-        assert "tests" in children
-        assert "README.md" in children
+        assert "src" in result.tree
+        assert "tests" in result.tree
+        assert "README.md" in result.tree
         
         # src should be truncated
-        src_entry = children["src"]
+        src_entry = result.tree["src"]
         assert src_entry["type"] == "directory"
-        assert "truncated" in src_entry
-        assert src_entry["truncated"] is True
+        assert "children_truncated" in src_entry
+        assert src_entry["children_truncated"] is True
     
     @pytest.mark.asyncio
     async def test_includes_file_sizes(self, temp_project_dir: Path):
@@ -94,13 +94,15 @@ class TestGetProjectStructure:
             include_sizes=True
         )
         
-        root_name = temp_project_dir.name
-        readme = result.tree[root_name]["children"]["README.md"]
+        readme = result.tree["README.md"]
         
         assert readme["type"] == "file"
         assert "size" in readme
         assert isinstance(readme["size"], int)
         assert readme["size"] > 0
+        
+        # Check metadata total_size is populated
+        assert result.total_size > 0
     
     @pytest.mark.asyncio
     async def test_excludes_file_sizes(self, temp_project_dir: Path):
@@ -114,11 +116,13 @@ class TestGetProjectStructure:
             include_sizes=False
         )
         
-        root_name = temp_project_dir.name
-        readme = result.tree[root_name]["children"]["README.md"]
+        readme = result.tree["README.md"]
         
         assert readme["type"] == "file"
         assert "size" not in readme
+        
+        # Check metadata total_size is 0 when sizes not included
+        assert result.total_size == 0
     
     @pytest.mark.asyncio
     async def test_hides_hidden_files(self, temp_project_dir: Path):
@@ -132,11 +136,8 @@ class TestGetProjectStructure:
             include_sizes=False
         )
         
-        root_name = temp_project_dir.name
-        children = result.tree[root_name]["children"]
-        
         # .gitignore should NOT be present
-        assert ".gitignore" not in children
+        assert ".gitignore" not in result.tree
     
     @pytest.mark.asyncio
     async def test_shows_hidden_files(self, temp_project_dir: Path):
@@ -150,12 +151,9 @@ class TestGetProjectStructure:
             include_sizes=False
         )
         
-        root_name = temp_project_dir.name
-        children = result.tree[root_name]["children"]
-        
         # .gitignore SHOULD be present
-        assert ".gitignore" in children
-        assert children[".gitignore"]["type"] == "file"
+        assert ".gitignore" in result.tree
+        assert result.tree[".gitignore"]["type"] == "file"
     
     @pytest.mark.asyncio
     async def test_nested_directories(self, temp_project_dir: Path):
@@ -169,8 +167,7 @@ class TestGetProjectStructure:
             include_sizes=False
         )
         
-        root_name = temp_project_dir.name
-        src = result.tree[root_name]["children"]["src"]
+        src = result.tree["src"]
         
         # Should have utils directory
         assert "utils" in src["children"]
@@ -196,11 +193,10 @@ class TestGetProjectStructure:
         assert isinstance(result, ProjectTree)
         assert result.root == str(empty_project_dir.resolve())
         
-        # Should have empty children
-        root_name = empty_project_dir.name
-        assert root_name in result.tree
-        assert result.tree[root_name]["type"] == "directory"
-        assert result.tree[root_name]["children"] == {}
+        # Should have empty tree
+        assert result.tree == {}
+        assert result.file_count == 0
+        assert result.directory_count == 0
     
     @pytest.mark.asyncio
     async def test_relative_path(self, temp_project_dir: Path):
@@ -214,10 +210,30 @@ class TestGetProjectStructure:
             include_sizes=False
         )
         
-        # Should start from src directory
-        assert "src" in result.tree
-        src = result.tree["src"]
+        # Root should be the src directory, tree contains its children
+        assert result.root.endswith("/src")
         
-        assert src["type"] == "directory"
-        assert "main.py" in src["children"]
-        assert "utils" in src["children"]
+        # Tree should contain direct children of src (no wrapper)
+        assert "main.py" in result.tree
+        assert "utils" in result.tree
+        assert result.tree["main.py"]["type"] == "file"
+        assert result.tree["utils"]["type"] == "directory"
+    
+    @pytest.mark.asyncio
+    async def test_exclude_patterns(self, temp_project_dir: Path):
+        """Test that exclude patterns work."""
+        workspace = WorkspaceService(project_path=str(temp_project_dir))
+        
+        result = await workspace.get_project_structure(
+            path=".",
+            max_depth=3,
+            show_hidden=False,
+            include_sizes=False,
+            exclude_patterns=["*.md"]
+        )
+        
+        # README.md should be excluded
+        assert "README.md" not in result.tree
+        
+        # Other files should still be present
+        assert "src" in result.tree

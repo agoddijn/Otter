@@ -10,6 +10,7 @@ from ..models.responses import (
     FileContent,
     ProjectTree,
     Symbol,
+    SymbolsResult,
 )
 
 
@@ -32,16 +33,20 @@ class WorkspaceService:
 
         Args:
             path: Path to file (relative to project root or absolute)
-            line_range: Optional (start, end) line range (1-indexed, inclusive)
-            include_imports: Whether to expand and include import information
-            include_diagnostics: Whether to include LSP diagnostics
-            context_lines: Number of additional context lines around line_range
+            line_range: Optional (start, end) line range (1-indexed, inclusive on both ends)
+            include_imports: Whether to detect and include import statements.
+                           NOTE: Import expansion (showing signatures) is not yet implemented.
+                           Currently returns import statements with empty signature lists.
+            include_diagnostics: Whether to include LSP diagnostics (linter errors, warnings, etc.)
+            context_lines: Number of additional context lines to include around line_range
 
         Returns:
-            FileContent with content and optional imports/diagnostics
+            FileContent with content, total line count, and optional imports/diagnostics.
+            The content includes line numbers in format "LINE_NUMBER|CONTENT".
 
         Raises:
             FileNotFoundError: If file doesn't exist
+            ValueError: If line_range is invalid (start > end, or exceeds file length)
             RuntimeError: If Neovim client not available and advanced features requested
         """
         # Resolve path relative to project root
@@ -55,6 +60,51 @@ class WorkspaceService:
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {path}")
 
+        # Get total line count first (for validation and metadata)
+        with open(file_path, "r", encoding="utf-8") as f:
+            all_file_lines = f.readlines()
+        total_lines = len(all_file_lines)
+
+        # Validate line_range if provided
+        if line_range:
+            start, end = line_range
+            if start < 1:
+                raise ValueError(f"Line range start must be >= 1, got {start}")
+            if end < start:
+                raise ValueError(f"Line range end ({end}) must be >= start ({start})")
+            if start > total_lines:
+                raise ValueError(
+                    f"Line range start ({start}) exceeds file length ({total_lines} lines)"
+                )
+            # Allow end to exceed total_lines - we'll just cap it
+
+        # Detect file language from extension
+        language = None
+        if file_path.suffix:
+            ext_to_lang = {
+                ".py": "python",
+                ".js": "javascript",
+                ".jsx": "javascript",
+                ".ts": "typescript",
+                ".tsx": "typescript",
+                ".rs": "rust",
+                ".go": "go",
+                ".java": "java",
+                ".c": "c",
+                ".cpp": "cpp",
+                ".h": "c",
+                ".hpp": "cpp",
+                ".rb": "ruby",
+                ".php": "php",
+                ".swift": "swift",
+                ".kt": "kotlin",
+                ".scala": "scala",
+                ".sh": "shell",
+                ".bash": "shell",
+                ".zsh": "shell",
+            }
+            language = ext_to_lang.get(file_path.suffix.lower())
+
         # If we need advanced features, we must use Neovim
         use_nvim = self.nvim_client and (include_imports or include_diagnostics)
 
@@ -62,7 +112,8 @@ class WorkspaceService:
         actual_range = line_range
         if line_range and context_lines > 0:
             start, end = line_range
-            actual_range = (max(1, start - context_lines), end + context_lines)
+            # Cap end at total_lines when adding context
+            actual_range = (max(1, start - context_lines), min(total_lines, end + context_lines))
 
         # Read file content
         if use_nvim and self.nvim_client is not None:
@@ -81,17 +132,14 @@ class WorkspaceService:
             ]
             content = "\n".join(numbered_lines)
         else:
-            # Direct file read (fallback)
-            with open(file_path, "r", encoding="utf-8") as f:
-                all_lines = f.readlines()
-
+            # Direct file read (fallback) - use already-read lines
             if actual_range:
                 start, end = actual_range
-                # Convert to 0-indexed
-                lines = all_lines[start - 1 : end]
+                # Convert to 0-indexed, cap end at total_lines
+                lines = all_file_lines[start - 1 : min(end, total_lines)]
                 start_line = start
             else:
-                lines = all_lines
+                lines = all_file_lines
                 start_line = 1
 
             # Add line numbers to content
@@ -113,7 +161,11 @@ class WorkspaceService:
             diagnostics = await self._get_file_diagnostics(file_path, line_range)
 
         return FileContent(
-            content=content, expanded_imports=expanded_imports, diagnostics=diagnostics
+            content=content,
+            total_lines=total_lines,
+            expanded_imports=expanded_imports,
+            diagnostics=diagnostics,
+            language=language,
         )
 
     async def _extract_imports(
@@ -232,20 +284,37 @@ class WorkspaceService:
         max_depth: int = 3,
         show_hidden: bool = False,
         include_sizes: bool = True,
+        exclude_patterns: Optional[List[str]] = None,
     ) -> ProjectTree:
         """Get the project directory structure.
         
-        NOTE: This is a low-value feature - agents can use `tree` or `ls -R` directly.
-        Kept for backward compatibility but may be removed in future.
-
+        Path Resolution:
+            - Relative paths (e.g., "src/otter") resolve relative to project_path
+            - Absolute paths are used as-is
+            - "." returns the project root contents
+        
         Args:
-            path: Root path to analyze (relative to project root)
-            max_depth: Maximum directory depth to traverse
-            show_hidden: Whether to include hidden files/directories
-            include_sizes: Whether to include file sizes
+            path: Root path to analyze (relative to project root, or absolute)
+            max_depth: Maximum directory depth to traverse (0 = root only, 1 = root + children)
+            show_hidden: Whether to include hidden files/directories (starting with .)
+            include_sizes: Whether to include file sizes in bytes
+            exclude_patterns: Patterns to exclude (e.g., ["*.pyc", "test_*"])
+                            Patterns match anywhere in the path. Common patterns like
+                            __pycache__, .git, node_modules are always excluded.
 
         Returns:
-            ProjectTree with root path and nested tree structure
+            ProjectTree with:
+                - root: Absolute path to the analyzed directory
+                - tree: Direct children (no wrapper for root directory name)
+                - file_count: Total number of files found
+                - directory_count: Total number of directories found
+                - total_size: Sum of all file sizes (0 if include_sizes=False)
+        
+        Example:
+            >>> result = await service.get_project_structure(path="src", max_depth=2)
+            >>> print(result.root)  # /path/to/project/src
+            >>> print(result.tree.keys())  # ["main.py", "utils", "models"]
+            >>> print(result.file_count)  # 15
         """
         # Resolve the path relative to project root
         if os.path.isabs(path):
@@ -255,62 +324,58 @@ class WorkspaceService:
 
         root_path = root_path.resolve()
 
-        # Build the tree structure
-        tree = self._build_tree(
+        # Initialize metadata counters
+        metadata = {"file_count": 0, "directory_count": 0, "total_size": 0}
+
+        # Build the tree structure (without root wrapper)
+        tree = self._build_tree_contents(
             root_path,
             current_depth=0,
             max_depth=max_depth,
             show_hidden=show_hidden,
             include_sizes=include_sizes,
+            exclude_patterns=exclude_patterns or [],
+            metadata=metadata,
         )
 
-        return ProjectTree(root=str(root_path), tree=tree)
+        return ProjectTree(
+            root=str(root_path),
+            tree=tree,
+            file_count=metadata["file_count"],
+            directory_count=metadata["directory_count"],
+            total_size=metadata["total_size"],
+        )
 
-    def _build_tree(
+    def _build_tree_contents(
         self,
         path: Path,
         current_depth: int,
         max_depth: int,
         show_hidden: bool,
         include_sizes: bool,
+        exclude_patterns: List[str],
+        metadata: Dict[str, int],
     ) -> Dict[str, Any]:
-        """Recursively build directory tree structure.
-
-        Returns a dictionary where:
-        - Keys are file/directory names
-        - Values are either:
-          - Dict with 'type', 'size' (for files)
-          - Dict with 'type', 'children' (for directories)
+        """Build directory contents (without wrapper for the directory itself).
+        
+        Returns the direct children of the given path, not wrapped in the path's name.
+        
+        Args:
+            metadata: Dict to track file_count, directory_count, total_size
         """
-        if not path.exists():
+        if not path.exists() or not path.is_dir():
             return {}
 
-        if not path.is_dir():
-            # It's a file
-            result: Dict[str, Any] = {"type": "file"}
-            if include_sizes:
-                try:
-                    result["size"] = path.stat().st_size
-                except (OSError, PermissionError):
-                    result["size"] = 0
-            return {path.name: result}
-
-        # It's a directory - if we've reached max depth, don't recurse further
+        # If we've reached max depth, return empty with truncation marker
         if current_depth >= max_depth:
-            return {path.name: {"type": "directory", "children": {}, "truncated": True}}
+            return {}
 
         try:
             entries = sorted(
                 path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())
             )
         except (OSError, PermissionError):
-            return {
-                path.name: {
-                    "type": "directory",
-                    "children": {},
-                    "error": "Permission denied",
-                }
-            }
+            return {}
 
         children: Dict[str, Any] = {}
 
@@ -331,29 +396,73 @@ class WorkspaceService:
                 ".ruff_cache",
             }:
                 continue
+            
+            # Check exclude patterns
+            if self._matches_exclude_pattern(str(entry), exclude_patterns):
+                continue
 
             if entry.is_dir():
-                # Recursively build subtree
-                subtree = self._build_tree(
-                    entry, current_depth + 1, max_depth, show_hidden, include_sizes
-                )
-                # Merge the subtree (it will have the directory name as key)
-                children.update(subtree)
+                metadata["directory_count"] += 1
+                
+                # Check if we can recurse further
+                if current_depth + 1 < max_depth:
+                    # Recursively build subtree
+                    subtree_children = self._build_tree_contents(
+                        entry,
+                        current_depth + 1,
+                        max_depth,
+                        show_hidden,
+                        include_sizes,
+                        exclude_patterns,
+                        metadata,
+                    )
+                    children[entry.name] = {
+                        "type": "directory",
+                        "children": subtree_children,
+                    }
+                else:
+                    # Max depth reached for children
+                    children[entry.name] = {
+                        "type": "directory",
+                        "children": {},
+                        "children_truncated": True,
+                    }
             else:
+                metadata["file_count"] += 1
+                
                 # Add file
                 file_info: Dict[str, Any] = {"type": "file"}
                 if include_sizes:
                     try:
-                        file_info["size"] = entry.stat().st_size
+                        size = entry.stat().st_size
+                        file_info["size"] = size
+                        metadata["total_size"] += size
                     except (OSError, PermissionError):
                         file_info["size"] = 0
                 children[entry.name] = file_info
 
-        return {path.name: {"type": "directory", "children": children}}
+        return children
+    
+    def _matches_exclude_pattern(self, path: str, patterns: List[str]) -> bool:
+        """Check if path matches any exclude pattern.
+        
+        Patterns can use wildcards:
+            - "*.pyc" matches any .pyc file
+            - "test_*" matches files starting with test_
+            - "**/tests/**" matches anything in tests directories
+        """
+        import fnmatch
+        
+        for pattern in patterns:
+            if fnmatch.fnmatch(path, f"*{pattern}*"):
+                return True
+            if fnmatch.fnmatch(Path(path).name, pattern):
+                return True
+        return False
 
     async def get_symbols(
         self, file: str, symbol_types: Optional[List[str]] = None
-    ) -> List[Symbol]:
+    ) -> SymbolsResult:
         """Extract all symbols (classes, functions, etc.) from a file.
 
         Args:
@@ -362,7 +471,7 @@ class WorkspaceService:
                          (e.g., ["class", "function", "method"])
 
         Returns:
-            List of Symbol objects with hierarchy
+            SymbolsResult with symbols list, file info, and metadata
 
         Raises:
             RuntimeError: If Neovim client not available
@@ -390,12 +499,52 @@ class WorkspaceService:
         lsp_symbols = await self.nvim_client.lsp_document_symbols(str(file_path))
 
         if not lsp_symbols:
-            return []
+            return SymbolsResult(
+                symbols=[],
+                file=str(file_path),
+                total_count=0,
+                language=self._detect_language(file_path),
+            )
 
         # Parse LSP symbols into our Symbol model
+        all_symbols_count = self._count_all_symbols(lsp_symbols)
         symbols = self._parse_lsp_symbols(lsp_symbols, symbol_types)
 
-        return symbols
+        return SymbolsResult(
+            symbols=symbols,
+            file=str(file_path),
+            total_count=all_symbols_count,
+            language=self._detect_language(file_path),
+        )
+
+    def _count_all_symbols(self, lsp_symbols: List[Dict[str, Any]]) -> int:
+        """Count total symbols recursively (for metadata)."""
+        count = 0
+        for lsp_sym in lsp_symbols:
+            count += 1
+            children = lsp_sym.get("children", [])
+            if children:
+                count += self._count_all_symbols(children)
+        return count
+
+    def _detect_language(self, file_path: Path) -> Optional[str]:
+        """Detect language from file extension."""
+        ext = file_path.suffix.lower()
+        lang_map = {
+            ".py": "python",
+            ".js": "javascript",
+            ".ts": "typescript",
+            ".jsx": "javascript",
+            ".tsx": "typescript",
+            ".rs": "rust",
+            ".go": "go",
+            ".java": "java",
+            ".cpp": "cpp",
+            ".c": "c",
+            ".h": "c",
+            ".hpp": "cpp",
+        }
+        return lang_map.get(ext)
 
     def _parse_lsp_symbols(
         self,
@@ -420,14 +569,19 @@ class WorkspaceService:
             # Convert LSP SymbolKind to our type strings
             symbol_type = self._lsp_kind_to_type(kind)
 
-            # Get line number (LSP uses 0-indexed, we use 1-indexed)
+            # Get location (LSP uses 0-indexed, we use 1-indexed for line)
             range_data = lsp_sym.get("range") or lsp_sym.get("location", {}).get(
                 "range"
             )
             if range_data:
                 line = range_data["start"]["line"] + 1
+                column = range_data["start"]["character"]  # Keep 0-indexed
             else:
                 line = 0
+                column = 0
+
+            # Extract signature/detail from LSP
+            detail = lsp_sym.get("detail")  # LSP provides type info, modifiers, etc.
 
             # Filter by type if requested
             if filter_types and symbol_type not in filter_types:
@@ -451,8 +605,11 @@ class WorkspaceService:
                 name=name,
                 type=symbol_type,
                 line=line,
+                column=column,
                 children=children if children else None,
                 parent=parent_name,
+                signature=detail,  # LSP detail often contains signature
+                detail=detail,
             )
 
         # Parse all top-level symbols

@@ -92,7 +92,7 @@ run: ## Run MCP server in production mode
 	@echo ".env: $(ENV_STATUS)"
 	PYTHONPATH=src IDE_PROJECT_PATH=$(PROJECT) uv run python -m otter.mcp_server
 
-test: ## Run all tests
+test: ## Run all tests (parallelized with pytest-xdist, Python only for now)
 	PYTHONPATH=src uv run pytest tests/
 
 test-unit: ## Run unit tests only

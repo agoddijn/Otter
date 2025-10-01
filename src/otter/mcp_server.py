@@ -100,15 +100,28 @@ async def find_definition(
     """Find where a symbol is defined.
 
     Navigate to where a symbol is defined, with smart resolution for imports,
-    methods, and nested references.
+    methods, and nested references. Uses LSP for accurate, language-agnostic
+    symbol resolution.
 
     Args:
         symbol: The symbol name to find the definition for
-        file: Optional file path for context-aware resolution
-        line: Optional line number for context-aware resolution
+        file: Optional file path for context-aware resolution. Provide this when the symbol
+              appears in multiple places or to ensure accurate resolution of imports/references.
+        line: Optional line number (1-indexed) for precise position-based search. When provided
+              with file, uses LSP to find the exact definition at that location.
 
     Returns:
-        Definition information including file, line, type, docstring, etc.
+        Definition information including:
+        - file, line, column: Location of the definition
+        - symbol_name, symbol_type: Identified symbol information
+        - signature: Function/method signatures (null for classes, variables, properties)
+        - docstring: Extracted documentation if available
+        - context_lines: Surrounding code lines with line numbers
+        - has_alternatives: Indicates if multiple definitions were found (returns first)
+
+    Note:
+        Currently requires both file and line parameters for position-based search.
+        Symbol-only search (grep-based) is not yet implemented.
     """
     ide = await get_ide_server()
     result = await ide.find_definition(symbol, file, line)
@@ -121,26 +134,36 @@ async def find_references(
     file: str | None = None,
     line: int | None = None,
     scope: Literal["file", "package", "project"] = "project",
-) -> List[Dict[str, Any]]:
-    """Find all usages of a symbol.
+    exclude_definition: bool = False,
+) -> Dict[str, Any]:
+    """Find all usages of a symbol with enhanced formatting and grouping.
 
-    Find all references to a symbol with contextual snippets. For best results,
+    Find all references to a symbol with contextual snippets including line numbers.
+    Results are automatically grouped by file for better readability. For best results,
     provide the file and line number where the symbol appears.
 
     Args:
         symbol: The symbol name to find references for
         file: Optional file path for context-aware resolution
         line: Optional line number for position-based search
-        scope: Search scope - "file", "package", or "project"
+        scope: Search scope:
+            - "file": Only references in the same file as the symbol
+            - "package": Only references in the same package/module (Note: currently treated as "project")
+            - "project": All references across the entire workspace (default)
+        exclude_definition: If True, exclude the definition itself from results
 
     Returns:
-        List of references with file, line, column, and context information
+        Structured result containing:
+            - references: List of all references with file, line, column, context (with line numbers),
+                         is_definition flag, and reference_type (import/usage/type_hint)
+            - total_count: Total number of references found
+            - grouped_by_file: References grouped by file with per-file counts
 
     Example:
-        find_references("UserModel", file="models.py", line=5)
+        find_references("UserModel", file="models.py", line=5, exclude_definition=True)
     """
     ide = await get_ide_server()
-    result = await ide.find_references(symbol, file, line, scope)
+    result = await ide.find_references(symbol, file, line, scope, exclude_definition)
     return _to_dict(result)
 
 
@@ -157,48 +180,82 @@ async def find_references(
 
 
 @mcp.tool()
-async def get_hover_info(file: str, line: int, column: int) -> Dict[str, Any]:
+async def get_hover_info(
+    file: str,
+    symbol: str | None = None,
+    line: int | None = None,
+    column: int | None = None,
+) -> Dict[str, Any]:
     """Get type information and documentation for a symbol.
 
-    Get type information, docstrings, and method signatures at a position.
+    Supports two usage patterns:
+    1. Symbol-based (agent-friendly): Provide symbol name, optionally with line hint
+    2. Position-based (precise): Provide exact line and column position
 
     Args:
         file: File path
-        line: Line number (1-indexed)
-        column: Column number (1-indexed)
+        symbol: Symbol name to find (e.g., "CliIdeServer", "find_definition")
+        line: Line number (1-indexed), required if symbol not provided, optional hint if symbol provided
+        column: Column number (1-indexed), required if symbol not provided
 
     Returns:
-        Hover information including symbol name, type, docstring, and source
+        Hover information including symbol name, type, docstring, source, line, and column
+
+    Examples:
+        # Symbol-based
+        get_hover_info(file="server.py", symbol="CliIdeServer")
+        
+        # Position-based
+        get_hover_info(file="server.py", line=83, column=15)
+        
+        # Disambiguated
+        get_hover_info(file="server.py", symbol="User", line=45)
     """
     ide = await get_ide_server()
-    result = await ide.get_hover_info(file, line, column)
+    result = await ide.get_hover_info(file, symbol, line, column)
     return _to_dict(result)
 
 
 @mcp.tool()
 async def get_completions(
-    file: str, line: int, column: int, context_lines: int = 10
-) -> List[Dict[str, Any]]:
+    file: str, line: int, column: int, max_results: int = 50
+) -> Dict[str, Any]:
     """Get context-aware code completions.
 
     Get intelligent code completion suggestions at a specific position using LSP.
+    Returns results in a structured format with relevance ranking and metadata.
 
     Args:
         file: File path
         line: Line number (1-indexed)
-        column: Column number (0-indexed, cursor position)
-        context_lines: Number of context lines (not used, kept for compatibility)
+        column: Column number (0-indexed, cursor position - where cursor would be for typing)
+        max_results: Maximum completions to return (default 50, use 0 for unlimited)
 
     Returns:
-        List of completion suggestions with text, kind, and details
+        CompletionsResult dict with:
+            - completions: List of completion objects (sorted by relevance)
+            - total_count: Total completions available  
+            - returned_count: Number actually returned
+            - truncated: True if limited by max_results
+            
+        Each completion has:
+            - text: The completion text to insert
+            - kind: Type of completion (function, method, class, variable, etc.)
+            - detail: Additional info (type signature, module, etc.)
+            - documentation: Docstring or description if available
         
-    Example:
-        # Get completions after typing "df.gr"
-        get_completions("analysis.py", line=23, column=5)
-        → Returns suggestions like "groupby", "gt", etc.
+    Examples:
+        # Get top 50 completions after typing "self."
+        get_completions("server.py", line=83, column=9)
+        
+        # Get more results if needed
+        get_completions("server.py", line=83, column=9, max_results=100)
+        
+        # Get all completions (warning: may return 100s of items)
+        get_completions("server.py", line=83, column=9, max_results=0)
     """
     ide = await get_ide_server()
-    result = await ide.get_completions(file, line, column, context_lines)
+    result = await ide.get_completions(file, line, column, max_results)
     return _to_dict(result)
 
 
@@ -217,17 +274,30 @@ async def read_file(
 ) -> Dict[str, Any]:
     """Read file with intelligent context inclusion.
 
-    Read files with optional import expansion, diagnostics, and context lines.
+    Read files with optional import detection, diagnostics, and context lines.
+    Content includes line numbers in format "LINE_NUMBER|CONTENT".
 
     Args:
-        path: File path to read
-        line_range: Optional tuple of (start_line, end_line) to read specific range
-        include_imports: Whether to expand and include import information
-        include_diagnostics: Whether to include linter/type errors inline
-        context_lines: Number of context lines to include around the range
+        path: File path to read (relative to project root or absolute)
+        line_range: Optional tuple of (start_line, end_line) to read specific range (1-indexed, inclusive).
+                   Example: (10, 20) reads lines 10 through 20.
+        include_imports: Whether to detect import statements.
+                        NOTE: Import expansion (showing signatures) is not yet implemented.
+                        Returns import statements with empty signature lists.
+        include_diagnostics: Whether to include LSP diagnostics (linter errors, warnings, type errors, etc.)
+        context_lines: Number of context lines to include around the line_range
 
     Returns:
-        File content with optional expanded imports and diagnostics
+        FileContent object with:
+        - content: File content with line numbers
+        - total_lines: Total number of lines in the file
+        - language: Detected file language (e.g., "python", "javascript")
+        - expanded_imports: Dict of import statements (if requested)
+        - diagnostics: List of diagnostic issues (if requested)
+
+    Raises:
+        FileNotFoundError: If file doesn't exist
+        ValueError: If line_range is invalid (e.g., start > total_lines)
     """
     ide = await get_ide_server()
     result = await ide.read_file(
@@ -242,23 +312,35 @@ async def get_project_structure(
     max_depth: int = 3,
     show_hidden: bool = False,
     include_sizes: bool = True,
+    exclude_patterns: List[str] | None = None,
 ) -> Dict[str, Any]:
     """Get organized view of project layout.
 
     Explore project structure with configurable depth and detail.
+    
+    Path Resolution:
+        - Relative paths resolve to project root (e.g., "src" -> /project/src)
+        - Absolute paths are used as-is
+        - "." returns the project root contents
 
     Args:
-        path: Root path to analyze (defaults to current directory)
-        max_depth: Maximum directory depth to traverse
-        show_hidden: Whether to include hidden files/directories
-        include_sizes: Whether to include file sizes
+        path: Root path to analyze (relative to project or absolute)
+        max_depth: Maximum directory depth (0=root only, 1=root+children)
+        show_hidden: Include hidden files/directories (starting with .)
+        include_sizes: Include file sizes in bytes
+        exclude_patterns: Patterns to exclude (e.g., ["*.pyc", "test_*"])
 
     Returns:
-        Project tree structure with metadata
+        Project tree with:
+            - root: Absolute path to analyzed directory
+            - tree: Direct children (no wrapper for root directory)
+            - file_count: Total files found
+            - directory_count: Total directories found
+            - total_size: Sum of file sizes in bytes (0 if include_sizes=False)
     """
     ide = await get_ide_server()
     result = await ide.get_project_structure(
-        path, max_depth, show_hidden, include_sizes
+        path, max_depth, show_hidden, include_sizes, exclude_patterns
     )
     return _to_dict(result)
 
@@ -266,18 +348,27 @@ async def get_project_structure(
 @mcp.tool()
 async def get_symbols(
     file: str, symbol_types: List[str] | None = None
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """Extract all symbols from a file.
 
-    Get classes, functions, methods, and other symbols from a file.
+    Get classes, functions, methods, and other symbols with rich metadata.
 
     Args:
-        file: File path to analyze
+        file: File path to analyze (relative to project or absolute)
         symbol_types: Optional list to filter by symbol type
                      (e.g., ["class", "function", "method"])
 
     Returns:
-        List of symbols with name, type, line number, and hierarchy
+        Structured result with:
+            - symbols: List of symbols with name, type, line, column, hierarchy
+            - file: File path analyzed
+            - total_count: Total symbols in file (including filtered out)
+            - language: Detected language
+        
+        Each symbol includes:
+            - signature: Function/method signature with params (from LSP detail)
+            - detail: Additional type info from LSP
+            - children: Nested symbols (methods in classes, etc.)
     """
     ide = await get_ide_server()
     result = await ide.get_symbols(file, symbol_types)

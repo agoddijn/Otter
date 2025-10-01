@@ -37,10 +37,10 @@ class TestAnalyzeDependenciesIntegration:
     async def test_analyze_server_dependencies(self, service):
         """Test analyzing the main server.py file - verifies tool runs without error."""
         result = await service.analyze_dependencies(
-            "src/cli_ide/server.py", direction="both"
+            "src/otter/server.py", direction="both"
         )
 
-        assert result.file == "src/cli_ide/server.py"
+        assert result.file == "src/otter/server.py"
         assert isinstance(result.imports, list)
         assert isinstance(result.imported_by, list)
 
@@ -48,10 +48,10 @@ class TestAnalyzeDependenciesIntegration:
     async def test_analyze_responses_dependencies(self, service):
         """Test analyzing the models/responses.py file - verifies tool runs."""
         result = await service.analyze_dependencies(
-            "src/cli_ide/models/responses.py", direction="both"
+            "src/otter/models/responses.py", direction="both"
         )
 
-        assert result.file == "src/cli_ide/models/responses.py"
+        assert result.file == "src/otter/models/responses.py"
         assert isinstance(result.imports, list)
         assert isinstance(result.imported_by, list)
 
@@ -59,27 +59,27 @@ class TestAnalyzeDependenciesIntegration:
     async def test_analyze_analysis_service(self, service):
         """Test analyzing the analysis service itself."""
         result = await service.analyze_dependencies(
-            "src/cli_ide/services/analysis.py", direction="imports"
+            "src/otter/services/analysis.py", direction="imports"
         )
 
-        assert result.file == "src/cli_ide/services/analysis.py"
+        assert result.file == "src/otter/services/analysis.py"
         assert isinstance(result.imports, list)
 
     @pytest.mark.asyncio
     async def test_analyze_neovim_client(self, service):
         """Test analyzing neovim client dependencies."""
         result = await service.analyze_dependencies(
-            "src/cli_ide/neovim/client.py", direction="imported_by"
+            "src/otter/neovim/client.py", direction="imported_by"
         )
 
-        assert result.file == "src/cli_ide/neovim/client.py"
+        assert result.file == "src/otter/neovim/client.py"
         assert isinstance(result.imported_by, list)
 
     @pytest.mark.asyncio
     async def test_imports_only_excludes_imported_by(self, service):
         """Test that direction='imports' doesn't include imported_by."""
         result = await service.analyze_dependencies(
-            "src/cli_ide/models/responses.py", direction="imports"
+            "src/otter/models/responses.py", direction="imports"
         )
 
         assert result.imported_by == []
@@ -88,7 +88,7 @@ class TestAnalyzeDependenciesIntegration:
     async def test_imported_by_only_excludes_imports(self, service):
         """Test that direction='imported_by' doesn't include imports."""
         result = await service.analyze_dependencies(
-            "src/cli_ide/models/responses.py", direction="imported_by"
+            "src/otter/models/responses.py", direction="imported_by"
         )
 
         assert result.imports == []
@@ -96,9 +96,9 @@ class TestAnalyzeDependenciesIntegration:
     @pytest.mark.asyncio
     async def test_analyze_with_relative_path(self, service):
         """Test analyzing with a relative path from project root."""
-        result = await service.analyze_dependencies("src/cli_ide/__init__.py")
+        result = await service.analyze_dependencies("src/otter/__init__.py")
 
-        assert result.file == "src/cli_ide/__init__.py"
+        assert result.file == "src/otter/__init__.py"
 
     @pytest.mark.asyncio
     async def test_nonexistent_file_raises_error(self, service):

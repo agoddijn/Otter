@@ -37,8 +37,14 @@ class TestGetSymbolsParameterized:
     ):
         """Test getting all symbols from a file across all languages."""
         ext = language_config.file_extension
-        symbols = await workspace_service.get_symbols(str(language_project_dir / f"models{ext}"))
+        result = await workspace_service.get_symbols(str(language_project_dir / f"models{ext}"))
 
+        # Check result structure
+        assert result.file.endswith(f"models{ext}"), f"File path should be in result"
+        assert result.total_count > 0, f"Should have total count"
+        assert result.language is not None, f"Should detect language"
+        
+        symbols = result.symbols
         # Should have classes, functions, and possibly module-level items
         assert len(symbols) > 0, f"Expected symbols for {language_config.language}"
 
@@ -58,7 +64,8 @@ class TestGetSymbolsParameterized:
     ):
         """Test that symbols have correct type information across all languages."""
         ext = language_config.file_extension
-        symbols = await workspace_service.get_symbols(str(language_project_dir / f"models{ext}"))
+        result = await workspace_service.get_symbols(str(language_project_dir / f"models{ext}"))
+        symbols = result.symbols
 
         # Find specific symbols and verify their types
         for symbol in symbols:
@@ -82,7 +89,8 @@ class TestGetSymbolsParameterized:
     ):
         """Test that symbols include line numbers across all languages."""
         ext = language_config.file_extension
-        symbols = await workspace_service.get_symbols(str(language_project_dir / f"models{ext}"))
+        result = await workspace_service.get_symbols(str(language_project_dir / f"models{ext}"))
+        symbols = result.symbols
 
         # All symbols should have positive line numbers
         for symbol in symbols:
@@ -94,7 +102,8 @@ class TestGetSymbolsParameterized:
     ):
         """Test that class symbols include their methods as children."""
         ext = language_config.file_extension
-        symbols = await workspace_service.get_symbols(str(language_project_dir / f"models{ext}"))
+        result = await workspace_service.get_symbols(str(language_project_dir / f"models{ext}"))
+        symbols = result.symbols
 
         # Find the User class/struct symbol
         user_symbol = None
@@ -131,7 +140,8 @@ class TestGetSymbolsParameterized:
     ):
         """Test that child symbols reference their parent across all languages."""
         ext = language_config.file_extension
-        symbols = await workspace_service.get_symbols(str(language_project_dir / f"models{ext}"))
+        result = await workspace_service.get_symbols(str(language_project_dir / f"models{ext}"))
+        symbols = result.symbols
 
         # Find a class with children
         for symbol in symbols:
@@ -151,9 +161,10 @@ class TestGetSymbolsParameterized:
         # Rust uses "struct" instead of "class"
         symbol_types = ["class"] if language_config.language != "rust" else ["struct", "class"]
         
-        symbols = await workspace_service.get_symbols(
+        result = await workspace_service.get_symbols(
             str(language_project_dir / f"models{ext}"), symbol_types=symbol_types
         )
+        symbols = result.symbols
 
         # Should only have class/struct symbols
         for symbol in symbols:
@@ -165,9 +176,10 @@ class TestGetSymbolsParameterized:
     ):
         """Test filtering symbols by type (function) across all languages."""
         ext = language_config.file_extension
-        symbols = await workspace_service.get_symbols(
+        result = await workspace_service.get_symbols(
             str(language_project_dir / f"models{ext}"), symbol_types=["function"]
         )
+        symbols = result.symbols
 
         # Should only have function symbols (not methods)
         for symbol in symbols:
@@ -187,9 +199,10 @@ class TestGetSymbolsParameterized:
         symbol_types = ["class", "function"] if language_config.language != "rust" \
                       else ["struct", "function", "class"]
         
-        symbols = await workspace_service.get_symbols(
+        result = await workspace_service.get_symbols(
             str(language_project_dir / f"models{ext}"), symbol_types=symbol_types
         )
+        symbols = result.symbols
 
         # Should have both classes/structs and functions
         types = {s.type for s in symbols}
@@ -212,8 +225,9 @@ class TestGetSymbolsParameterized:
         import asyncio
         await asyncio.sleep(1)
 
-        symbols = await workspace_service.get_symbols(str(empty_file))
-        assert symbols == [], f"Empty file should return empty list in {language_config.language}"
+        result = await workspace_service.get_symbols(str(empty_file))
+        assert result.symbols == [], f"Empty file should return empty list in {language_config.language}"
+        assert result.total_count == 0, f"Empty file should have 0 total count"
 
     async def test_file_not_found_raises_error(
         self, workspace_service, language_project_dir, language_config: LanguageTestConfig
@@ -238,8 +252,8 @@ class TestGetSymbolsParameterized:
     ):
         """Test that relative paths work correctly across all languages."""
         ext = language_config.file_extension
-        symbols = await workspace_service.get_symbols(f"models{ext}")
+        result = await workspace_service.get_symbols(f"models{ext}")
 
         # Should work the same as absolute path
-        assert len(symbols) > 0, f"Relative path should work in {language_config.language}"
+        assert len(result.symbols) > 0, f"Relative path should work in {language_config.language}"
 

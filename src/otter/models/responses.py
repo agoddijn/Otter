@@ -15,9 +15,10 @@ class Definition:
         "function", "class", "variable", "module", "method", "property"
     ]
     docstring: Optional[str] = None
-    signature: Optional[str] = None
-    context_lines: List[str] = field(default_factory=list)
+    signature: Optional[str] = None  # Present for functions/methods, null for classes/variables
+    context_lines: List[str] = field(default_factory=list)  # Lines with format "LINE_NUM|CONTENT"
     source_module: Optional[str] = None
+    has_alternatives: bool = False  # True if LSP returned multiple possible definitions
 
 
 @dataclass
@@ -26,6 +27,24 @@ class Reference:
     line: int
     column: int
     context: str
+    is_definition: bool = False
+    reference_type: Optional[str] = None  # e.g., "import", "usage", "type_hint"
+
+
+@dataclass
+class FileReferences:
+    """References grouped by file."""
+    file: str
+    count: int
+    references: List[Reference] = field(default_factory=list)
+
+
+@dataclass
+class ReferencesResult:
+    """Structured result for find_references with grouping and metadata."""
+    references: List[Reference]
+    total_count: int
+    grouped_by_file: List[FileReferences] = field(default_factory=list)
 
 
 @dataclass
@@ -38,11 +57,22 @@ class SearchResult:
 
 # Code intelligence
 @dataclass
+class CompletionsResult:
+    """Structured result for code completions with metadata."""
+    completions: List[Completion]
+    total_count: int  # Total completions found
+    returned_count: int  # Number returned (may be less if truncated)
+    truncated: bool  # True if results were limited by max_results
+
+
+@dataclass
 class HoverInfo:
     symbol: str
     type: Optional[str]
     docstring: Optional[str]
     source_file: Optional[str]
+    line: Optional[int] = None  # Position where hover was requested
+    column: Optional[int] = None  # Position where hover was requested
 
 
 @dataclass
@@ -50,29 +80,69 @@ class Completion:
     text: str
     kind: Optional[str] = None
     detail: Optional[str] = None
+    documentation: Optional[str] = None  # Docstring or description from LSP
+    sort_text: Optional[str] = None  # For ranking/sorting (internal use)
 
 
 # Files & projects
 @dataclass
 class FileContent:
     content: str
+    total_lines: int  # Total number of lines in the file
     expanded_imports: Optional[Dict[str, List[str]]] = None
     diagnostics: Optional[List["Diagnostic"]] = None
+    language: Optional[str] = None  # File language (e.g., "python", "javascript")
 
 
 @dataclass
 class ProjectTree:
-    root: str
-    tree: Dict[str, Any]
+    """Directory tree structure with metadata.
+    
+    Tree structure no longer wraps root directory - returns children directly.
+    
+    Migration from v0.4.x:
+        # Old format (v0.4.x):
+        tree = {"project_name": {"type": "directory", "children": {...}}}
+        
+        # New format (v0.5.0+):
+        tree = {"src": {...}, "tests": {...}, "README.md": {...}}
+        # Root directory name already provided in 'root' field
+    """
+    root: str  # Absolute path to the root directory
+    tree: Dict[str, Any]  # Directory contents (no wrapper for root)
+    file_count: int = 0  # Total number of files
+    directory_count: int = 0  # Total number of directories
+    total_size: int = 0  # Total size of all files in bytes (0 if include_sizes=False)
 
 
 @dataclass
 class Symbol:
-    name: str
-    type: str
-    line: int
-    children: Optional[List["Symbol"]] = None
-    parent: Optional[str] = None
+    """Symbol information from LSP document symbols.
+    
+    Represents a code symbol (class, function, method, variable, etc.)
+    extracted from a source file via LSP.
+    """
+    name: str  # Symbol name
+    type: str  # Symbol type: "class", "function", "method", "variable", etc.
+    line: int  # Line number (1-indexed)
+    column: int = 0  # Column number (0-indexed, matching LSP)
+    children: Optional[List["Symbol"]] = None  # Nested symbols (methods in class, etc.)
+    parent: Optional[str] = None  # Parent symbol name for hierarchy
+    signature: Optional[str] = None  # Function/method signature with params and return type
+    docstring: Optional[str] = None  # Extracted docstring/documentation
+    detail: Optional[str] = None  # Additional detail from LSP (type info, modifiers, etc.)
+
+
+@dataclass
+class SymbolsResult:
+    """Result of get_symbols with metadata.
+    
+    Wraps symbol list with file context and counts.
+    """
+    symbols: List[Symbol]  # List of symbols found
+    file: str  # File path analyzed
+    total_count: int  # Total symbols found (including filtered out)
+    language: Optional[str] = None  # Detected language
 
 
 # Refactoring
@@ -316,12 +386,16 @@ class ErrorExplanation:
 __all__ = [
     "Definition",
     "Reference",
+    "FileReferences",
+    "ReferencesResult",
     "SearchResult",
+    "CompletionsResult",
     "HoverInfo",
     "Completion",
     "FileContent",
     "ProjectTree",
     "Symbol",
+    "SymbolsResult",
     "Change",
     "RenamePreview",
     "RenameResult",

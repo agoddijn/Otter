@@ -4,10 +4,18 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from ..models.responses import Change, ExtractResult, RenamePreview, RenameResult
+from ..utils.path import resolve_workspace_path
 
 
 class RefactoringService:
-    def __init__(self, nvim_client: Optional[Any] = None) -> None:
+    def __init__(self, project_path: str, nvim_client: Optional[Any] = None) -> None:
+        """Initialize RefactoringService.
+        
+        Args:
+            project_path: Root path of the project (required for path resolution)
+            nvim_client: NeovimClient instance for LSP operations
+        """
+        self.project_path = project_path
         self.nvim_client = nvim_client
 
     async def rename_symbol(
@@ -21,7 +29,7 @@ class RefactoringService:
         """Rename a symbol using LSP.
 
         Args:
-            file: File path where the symbol is located
+            file: File path where the symbol is located (relative to project root or absolute)
             line: Line number (1-indexed)
             column: Column number (0-indexed)
             new_name: New name for the symbol
@@ -33,8 +41,8 @@ class RefactoringService:
         if not self.nvim_client:
             raise RuntimeError("NeovimClient not initialized")
 
-        # Resolve the file path
-        file_path = str(Path(file).resolve())
+        # Resolve the file path relative to project root
+        file_path = str(resolve_workspace_path(file, self.project_path))
 
         # Get WorkspaceEdit from LSP
         workspace_edit = await self.nvim_client.lsp_rename(

@@ -37,6 +37,7 @@ class TestReadFileIntegration:
 
             # Should include line numbers
             assert result.content == "1|print('hello world')"
+            assert result.total_lines == 1
             assert result.expanded_imports is None
             assert result.diagnostics is None
 
@@ -56,6 +57,7 @@ class TestReadFileIntegration:
             result = await service.read_file("test.py", include_imports=True)
 
             # Should have extracted imports
+            assert result.total_lines == 5
             assert result.expanded_imports is not None
             assert "import os" in result.expanded_imports
             assert "from pathlib import Path" in result.expanded_imports
@@ -83,6 +85,7 @@ class TestReadFileIntegration:
             result = await service.read_file("valid.py", include_diagnostics=True)
 
             # Valid code should have no diagnostics (or they should be empty)
+            assert result.total_lines == 5
             assert result.diagnostics is not None
             assert isinstance(result.diagnostics, list)
             # Could be empty or have warnings, but shouldn't have errors
@@ -116,6 +119,7 @@ class TestReadFileIntegration:
                     print(f"  - {diag.severity}: {diag.message} (line {diag.line})")
 
             # STRICT: Must have diagnostics for syntax errors
+            assert result.total_lines == 2
             assert result.diagnostics is not None, "Diagnostics should not be None"
             assert len(result.diagnostics) > 0, (
                 "LSP should detect syntax errors. "
@@ -159,6 +163,7 @@ class TestReadFileIntegration:
             # NOTE: Type checking depends on Pyright settings
             # With typeCheckingMode="basic", this SHOULD catch the type error
             # This is a weaker assertion than syntax errors since type checking can be off
+            assert result.total_lines == 5
             assert result.diagnostics is not None, "Diagnostics should not be None"
 
             # With our Pyright config (typeCheckingMode="basic"), we expect type errors
@@ -211,6 +216,7 @@ class TestReadFileIntegration:
                     print(f"  - Line {diag.line}: {diag.message}")
 
             # STRICT: Should have diagnostics in the file
+            assert result.total_lines == 7
             assert result.diagnostics is not None
             assert len(result.diagnostics) > 0, (
                 "Should have diagnostics for syntax errors on line 2"
@@ -239,6 +245,7 @@ class TestReadFileIntegration:
             )
 
             # Should get lines 2-4 (3 ± 1) with line numbers
+            assert result.total_lines == 5
             assert "2|line2" in result.content
             assert "3|line3" in result.content
             assert "4|line4" in result.content
