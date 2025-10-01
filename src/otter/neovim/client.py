@@ -307,6 +307,463 @@ class NeovimClient:
         lines = await loop.run_in_executor(None, _read_buffer)
         return lines
 
+    async def get_buffer_info(self, filepath: str) -> Dict[str, Any]:
+        """Get information about a buffer.
+
+        Args:
+            filepath: Path to the file
+
+        Returns:
+            Dictionary with buffer information:
+            - is_open: Whether the file is open in a buffer
+            - is_modified: Whether the buffer has unsaved changes
+            - line_count: Number of lines in the buffer
+            - language: File type/language
+        """
+        # Resolve path
+        if os.path.isabs(filepath):
+            file_path = Path(filepath)
+        else:
+            file_path = self.project_path / filepath
+        
+        file_path = file_path.resolve()
+        filepath_str = str(file_path)
+        
+        # Check if file is in our buffers cache
+        is_open = filepath_str in self._buffers
+        
+        if not is_open:
+            # File not open, return basic info
+            if file_path.exists():
+                with open(file_path, 'r') as f:
+                    lines = f.readlines()
+                line_count = len(lines)
+            else:
+                line_count = 0
+            
+            return {
+                "is_open": False,
+                "is_modified": False,
+                "line_count": line_count,
+                "language": file_path.suffix.lstrip('.') if file_path.suffix else "unknown"
+            }
+        
+        # File is open, get buffer info from Neovim
+        buf_num = self._buffers[filepath_str]
+        
+        if not self.nvim:
+            raise RuntimeError("Neovim not connected")
+        
+        loop = asyncio.get_event_loop()
+        
+        def _get_info():
+            if not self.nvim:
+                raise RuntimeError("Neovim not connected")
+            
+            # Find the buffer
+            buf = None
+            for b in self.nvim.buffers:
+                if b.number == buf_num:
+                    buf = b
+                    break
+            
+            if not buf:
+                raise RuntimeError(f"Buffer {buf_num} not found")
+            
+            # Get buffer info
+            is_modified = buf.options.get('modified', False)
+            line_count = len(buf)
+            filetype = buf.options.get('filetype', 'unknown')
+            
+            return {
+                "is_open": True,
+                "is_modified": is_modified,
+                "line_count": line_count,
+                "language": filetype
+            }
+        
+        info = await loop.run_in_executor(None, _get_info)
+        return info
+
+    async def edit_buffer_lines(
+        self, filepath: str, edits: List[Tuple[int, int, List[str]]]
+    ) -> Dict[str, Any]:
+        """Edit lines in a buffer.
+
+        Args:
+            filepath: Path to the file
+            edits: List of (start_line, end_line, new_lines) tuples
+                  - start_line: 1-indexed start line
+                  - end_line: 1-indexed end line (inclusive)
+                  - new_lines: List of new line strings to replace with
+
+        Returns:
+            Dictionary with edit results:
+            - success: Whether all edits were applied
+            - line_count: New line count after edits
+            - is_modified: Whether buffer is now modified
+        """
+        # Open file if not already open
+        buf_num = await self.open_file(filepath)
+        
+        if not self.nvim:
+            raise RuntimeError("Neovim not connected")
+        
+        loop = asyncio.get_event_loop()
+        
+        def _apply_edits():
+            if not self.nvim:
+                raise RuntimeError("Neovim not connected")
+            
+            # Find the buffer
+            buf = None
+            for b in self.nvim.buffers:
+                if b.number == buf_num:
+                    buf = b
+                    break
+            
+            if not buf:
+                raise RuntimeError(f"Buffer {buf_num} not found")
+            
+            # Sort edits by line number (descending) to avoid offset issues
+            sorted_edits = sorted(edits, key=lambda e: e[0], reverse=True)
+            
+            # Apply each edit
+            for start_line, end_line, new_lines in sorted_edits:
+                # Convert to 0-indexed
+                start_idx = start_line - 1
+                end_idx = end_line  # nvim_buf_set_lines is exclusive on end
+                
+                # Validate line range
+                if start_idx < 0:
+                    raise ValueError(f"Invalid start line: {start_line} (must be >= 1)")
+                if end_idx > len(buf):
+                    raise ValueError(f"Invalid end line: {end_line} (buffer has {len(buf)} lines)")
+                
+                # Set lines in buffer
+                buf[start_idx:end_idx] = new_lines
+            
+            # Get updated buffer info
+            is_modified = buf.options.get('modified', False)
+            line_count = len(buf)
+            
+            return {
+                "success": True,
+                "line_count": line_count,
+                "is_modified": is_modified
+            }
+        
+        result = await loop.run_in_executor(None, _apply_edits)
+        return result
+
+    async def save_buffer(self, filepath: str) -> Dict[str, Any]:
+        """Save a buffer to disk.
+
+        Args:
+            filepath: Path to the file
+
+        Returns:
+            Dictionary with save results:
+            - success: Whether save was successful
+            - is_modified: Whether buffer is still modified (should be False after save)
+            - file: Absolute path to saved file
+        """
+        # Resolve path
+        if os.path.isabs(filepath):
+            file_path = Path(filepath)
+        else:
+            file_path = self.project_path / filepath
+        
+        file_path = file_path.resolve()
+        filepath_str = str(file_path)
+        
+        # Check if file is open
+        if filepath_str not in self._buffers:
+            # File not open, nothing to save
+            return {
+                "success": False,
+                "is_modified": False,
+                "file": filepath_str,
+                "error": "Buffer not open"
+            }
+        
+        buf_num = self._buffers[filepath_str]
+        
+        if not self.nvim:
+            raise RuntimeError("Neovim not connected")
+        
+        loop = asyncio.get_event_loop()
+        
+        def _save_buffer():
+            if not self.nvim:
+                raise RuntimeError("Neovim not connected")
+            
+            # Find the buffer
+            buf = None
+            for b in self.nvim.buffers:
+                if b.number == buf_num:
+                    buf = b
+                    break
+            
+            if not buf:
+                raise RuntimeError(f"Buffer {buf_num} not found")
+            
+            # Execute write command for this buffer
+            # Use :write to save the buffer
+            try:
+                self.nvim.command(f'buffer {buf_num}')
+                self.nvim.command('write')
+                
+                # Check if buffer is still modified (should be False after save)
+                is_modified = buf.options.get('modified', False)
+                
+                return {
+                    "success": True,
+                    "is_modified": is_modified,
+                    "file": filepath_str
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "is_modified": buf.options.get('modified', False),
+                    "file": filepath_str,
+                    "error": str(e)
+                }
+        
+        result = await loop.run_in_executor(None, _save_buffer)
+        return result
+
+    async def discard_buffer(self, filepath: str) -> Dict[str, Any]:
+        """Discard changes in a buffer (reload from disk).
+
+        Args:
+            filepath: Path to the file
+
+        Returns:
+            Dictionary with discard results:
+            - success: Whether discard was successful
+            - is_modified: Whether buffer is still modified (should be False after discard)
+            - file: Absolute path to file
+        """
+        # Resolve path
+        if os.path.isabs(filepath):
+            file_path = Path(filepath)
+        else:
+            file_path = self.project_path / filepath
+        
+        file_path = file_path.resolve()
+        filepath_str = str(file_path)
+        
+        # Check if file is open
+        if filepath_str not in self._buffers:
+            return {
+                "success": False,
+                "is_modified": False,
+                "file": filepath_str,
+                "error": "Buffer not open"
+            }
+        
+        buf_num = self._buffers[filepath_str]
+        
+        if not self.nvim:
+            raise RuntimeError("Neovim not connected")
+        
+        loop = asyncio.get_event_loop()
+        
+        def _discard_buffer():
+            if not self.nvim:
+                raise RuntimeError("Neovim not connected")
+            
+            # Find the buffer
+            buf = None
+            for b in self.nvim.buffers:
+                if b.number == buf_num:
+                    buf = b
+                    break
+            
+            if not buf:
+                raise RuntimeError(f"Buffer {buf_num} not found")
+            
+            # Reload buffer from disk using :edit!
+            try:
+                self.nvim.command(f'buffer {buf_num}')
+                self.nvim.command('edit!')  # Force reload from disk
+                
+                # Check modified status (should be False after reload)
+                is_modified = buf.options.get('modified', False)
+                
+                return {
+                    "success": True,
+                    "is_modified": is_modified,
+                    "file": filepath_str
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "is_modified": buf.options.get('modified', False),
+                    "file": filepath_str,
+                    "error": str(e)
+                }
+        
+        result = await loop.run_in_executor(None, _discard_buffer)
+        return result
+
+    async def get_buffer_content(self, filepath: str) -> Optional[str]:
+        """Get raw buffer content as string.
+
+        Args:
+            filepath: Path to the file
+
+        Returns:
+            Buffer content as string, or None if buffer not open
+        """
+        # Resolve path
+        if os.path.isabs(filepath):
+            file_path = Path(filepath)
+        else:
+            file_path = self.project_path / filepath
+        
+        file_path = file_path.resolve()
+        filepath_str = str(file_path)
+        
+        # Check if file is open
+        if filepath_str not in self._buffers:
+            return None
+        
+        buf_num = self._buffers[filepath_str]
+        
+        if not self.nvim:
+            raise RuntimeError("Neovim not connected")
+        
+        loop = asyncio.get_event_loop()
+        
+        def _get_content():
+            if not self.nvim:
+                raise RuntimeError("Neovim not connected")
+            
+            # Find the buffer
+            buf = None
+            for b in self.nvim.buffers:
+                if b.number == buf_num:
+                    buf = b
+                    break
+            
+            if not buf:
+                return None
+            
+            # Get buffer lines and join
+            lines = buf[:]
+            return "\n".join(lines)
+        
+        return await loop.run_in_executor(None, _get_content)
+
+    async def get_buffer_diff(self, filepath: str) -> Dict[str, Any]:
+        """Get diff between buffer and disk version.
+
+        Args:
+            filepath: Path to the file
+
+        Returns:
+            Dictionary with diff information:
+            - has_changes: Whether buffer differs from disk
+            - diff: Unified diff string (if has_changes)
+            - file: Absolute path to file
+        """
+        # Resolve path
+        if os.path.isabs(filepath):
+            file_path = Path(filepath)
+        else:
+            file_path = self.project_path / filepath
+        
+        file_path = file_path.resolve()
+        filepath_str = str(file_path)
+        
+        # Check if file is open
+        if filepath_str not in self._buffers:
+            return {
+                "has_changes": False,
+                "file": filepath_str,
+                "error": "Buffer not open"
+            }
+        
+        buf_num = self._buffers[filepath_str]
+        
+        if not self.nvim:
+            raise RuntimeError("Neovim not connected")
+        
+        loop = asyncio.get_event_loop()
+        
+        def _get_diff():
+            if not self.nvim:
+                raise RuntimeError("Neovim not connected")
+            
+            # Find the buffer
+            buf = None
+            for b in self.nvim.buffers:
+                if b.number == buf_num:
+                    buf = b
+                    break
+            
+            if not buf:
+                raise RuntimeError(f"Buffer {buf_num} not found")
+            
+            try:
+                # Get buffer content
+                buffer_lines = buf[:]
+                
+                # Read disk content
+                if not file_path.exists():
+                    # New file not yet saved
+                    import difflib
+                    diff = difflib.unified_diff(
+                        [],
+                        buffer_lines,
+                        fromfile=f"a/{filepath_str}",
+                        tofile=f"b/{filepath_str}",
+                        lineterm=""
+                    )
+                    return {
+                        "has_changes": True,
+                        "diff": "\n".join(diff),
+                        "file": filepath_str
+                    }
+                
+                with open(file_path, 'r') as f:
+                    disk_lines = f.read().splitlines()
+                
+                # Compare
+                if buffer_lines == disk_lines:
+                    return {
+                        "has_changes": False,
+                        "file": filepath_str
+                    }
+                
+                # Generate unified diff
+                import difflib
+                diff = difflib.unified_diff(
+                    disk_lines,
+                    buffer_lines,
+                    fromfile=f"a/{filepath_str}",
+                    tofile=f"b/{filepath_str}",
+                    lineterm=""
+                )
+                
+                return {
+                    "has_changes": True,
+                    "diff": "\n".join(diff),
+                    "file": filepath_str
+                }
+            
+            except Exception as e:
+                return {
+                    "has_changes": False,
+                    "file": filepath_str,
+                    "error": str(e)
+                }
+        
+        result = await loop.run_in_executor(None, _get_diff)
+        return result
+
     async def execute_lua(self, lua_code: str, *args: Any) -> Any:
         """Execute Lua code in Neovim.
 

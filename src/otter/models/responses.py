@@ -378,6 +378,77 @@ class ErrorExplanation:
     context_line: Optional[int] = None
 
 
+# Buffer Editing
+@dataclass
+class BufferEdit:
+    """Single edit operation."""
+    line_start: int  # 1-indexed start line
+    line_end: int  # 1-indexed end line (inclusive)
+    new_text: str  # Replacement text (may contain multiple lines)
+
+
+@dataclass
+class BufferInfo:
+    """Information about a buffer."""
+    file: str
+    is_open: bool
+    is_modified: bool
+    line_count: int
+    language: str
+
+
+@dataclass
+class EditResult:
+    """Result of buffer editing operation."""
+    file: str
+    preview: Optional[str] = None  # Unified diff if preview=True
+    applied: bool = False  # Whether changes were applied
+    success: bool = True
+    line_count: Optional[int] = None  # Line count after edits
+    is_modified: Optional[bool] = None  # Modified status after edits
+    error: Optional[str] = None
+
+
+@dataclass
+class SaveResult:
+    """Result of saving a buffer to disk."""
+    file: str
+    success: bool
+    is_modified: bool  # Should be False after successful save
+    error: Optional[str] = None
+
+
+@dataclass
+class DiscardResult:
+    """Result of discarding buffer changes."""
+    file: str
+    success: bool
+    is_modified: bool  # Should be False after successful discard
+    error: Optional[str] = None
+
+
+@dataclass
+class BufferDiff:
+    """Diff between buffer and disk version."""
+    file: str
+    has_changes: bool
+    diff: Optional[str] = None  # Unified diff if has_changes
+    error: Optional[str] = None
+
+
+@dataclass
+class FindReplaceResult:
+    """Result of find-and-replace operation."""
+    file: str
+    success: bool
+    preview: Optional[str] = None  # Unified diff if preview=True
+    applied: bool = False  # Whether changes were applied
+    replacements_made: int = 0  # Number of replacements
+    line_count: Optional[int] = None  # Line count after replacements
+    is_modified: Optional[bool] = None  # Modified status after replacements
+    error: Optional[str] = None
+
+
 __all__ = [
     "Definition",
     "Reference",
@@ -419,4 +490,11 @@ __all__ = [
     "ChangeSummary",
     "ReviewResult",
     "ErrorExplanation",
+    "BufferEdit",
+    "BufferInfo",
+    "EditResult",
+    "SaveResult",
+    "DiscardResult",
+    "BufferDiff",
+    "FindReplaceResult",
 ]

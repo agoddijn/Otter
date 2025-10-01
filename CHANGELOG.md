@@ -8,6 +8,105 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+**🚀 CRITICAL NEW FEATURE: Complete Buffer Editing Suite**
+- **`edit_buffer` tool**: Apply line-based edits to files with preview mode
+  - Supports multiple edits in a single operation
+  - Preview mode returns unified diff before applying changes
+  - Applies edits atomically (all or nothing)
+  - Preserves Neovim undo history
+  - Triggers LSP re-analysis after edits
+  - **Line range semantics**: `line_start` and `line_end` are inclusive 1-indexed ranges
+- **`get_buffer_info` tool**: Check buffer state before editing
+  - Returns: is_open, is_modified, line_count, language
+  - Helps prevent conflicts with unsaved changes
+- **`save_buffer` tool**: Write buffer contents to disk
+  - Persists changes made with edit_buffer
+  - Clears modified flag after successful save
+  - Returns success status and error details
+- **`discard_buffer` tool**: Revert unsaved changes (NEW!)
+  - Reloads file from disk, discarding all in-memory edits
+  - Completes the edit-or-discard workflow
+  - Cannot be undone - changes are permanently lost
+- **`get_buffer_diff` tool**: Preview buffer vs disk (NEW!)
+  - Shows unified diff of what changed in buffer vs disk
+  - Useful for reviewing changes before saving
+  - Helps decide whether to save or discard
+- **`find_and_replace` tool**: Text-based editing convenience (NEW!)
+  - Alternative to line-based edit_buffer for simple substitutions
+  - More natural for config changes and typo fixes
+  - Supports replacing all, first, or specific occurrence
+  - Operates on buffer content (preserves unsaved edits)
+  - Preview mode shows diff before applying
+- **New `EditingService`**: Manages buffer editing operations (~480 lines)
+- **New Neovim client methods**: `get_buffer_info()`, `edit_buffer_lines()`, `save_buffer()`, `discard_buffer()`, `get_buffer_diff()`, `get_buffer_content()` (~460 lines)
+- **New response models**: `BufferEdit`, `BufferInfo`, `EditResult`, `SaveResult`, `DiscardResult`, `BufferDiff`, `FindReplaceResult`
+
+**Impact**: This makes Otter a fully functional AI coding assistant! LLMs can now:
+- ✅ Apply code changes (previously read-only)
+- ✅ Save changes to disk
+- ✅ Discard unwanted changes
+- ✅ Review changes before committing
+- ✅ Fix errors found by `get_diagnostics`
+- ✅ Implement refactorings from `rename_symbol`/`extract_function`
+- ✅ Make any code modifications
+
+**Complete editing workflows:**
+
+**Precise line-based editing:**
+1. `get_buffer_info` - Check current state
+2. `edit_buffer` (preview=true) - Preview changes as diff
+3. `edit_buffer` (preview=false) - Apply changes
+4. `get_buffer_diff` - Review buffer vs disk
+5. `save_buffer` OR `discard_buffer` - Commit or revert
+
+**Simple text-based editing:**
+1. `find_and_replace` (preview=true) - Preview substitutions
+2. `find_and_replace` (preview=false) - Apply changes
+3. `save_buffer` - Commit to disk
+
+**MCP Resources - Server-Level Documentation** (NEW!)
+- Added 4 queryable MCP resources that agents can access for guidance:
+  - `otter://docs/quick-start` - Categorized tool reference
+  - `otter://docs/buffer-vs-disk` - Critical mental model explanation
+  - `otter://docs/workflows` - Common editing workflows with examples
+  - `otter://docs/troubleshooting` - Solutions to common problems
+- Agents can query these resources directly through the MCP protocol
+- No client-side configuration required - resources are discoverable
+- Provides comprehensive context beyond individual tool descriptions
+
+**Impact**: Agents now have structured, query able documentation for:
+- Understanding the buffer vs disk distinction
+- Learning proper tool usage patterns
+- Following recommended workflows
+- Troubleshooting common mistakes
+
+### Improved
+
+**Enhanced Tool Documentation for Buffer Editing**
+- **`read_file` clarification**: Now explicitly states it reads from DISK, not buffer
+  - Added mental model diagram showing DISK vs BUFFER
+  - Clear guidance to use `get_buffer_diff` for pending changes
+- **`get_buffer_diff` enhancement**: Marked as "PRIMARY VERIFICATION TOOL"
+  - Detailed use cases: pre-save review, post-discard verification
+  - Multiple examples showing expected behavior
+  - Explains `has_changes=false` as success indicator
+- **`save_buffer` improvement**: Added tip to always review with `get_buffer_diff` first
+  - Mental model showing BUFFER → DISK flow
+- **`discard_buffer` clarification**: Explains buffer remains open after discard
+  - Added verification workflow examples
+  - Clear guidance on using `get_buffer_diff` to confirm success
+- **Common Workflows section**: Added to Buffer Editing Tools header
+  - 3 complete workflows: Safe Edit, Experimental, Multiple Edits
+  - Key concepts explaining DISK vs BUFFER mental model
+  - Visual diagram of tool relationships
+
+**Impact**: These documentation improvements prevent common confusion about:
+- When edits are in-memory vs on-disk
+- How to verify operations succeeded
+- The relationship between read_file, get_buffer_diff, and buffer state
+
 ### Added - Comprehensive Feature Roadmap
 
 **New documentation: ROADMAP.md**

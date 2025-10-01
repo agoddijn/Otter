@@ -130,6 +130,79 @@ def _to_dict(obj: Any) -> Any:
 
 
 # ============================================================================
+# QUICK START GUIDE
+# ============================================================================
+#
+# 🔍 CODE NAVIGATION
+#     find_definition      - Jump to where a symbol is defined
+#     find_references      - Find all usages of a symbol
+#     get_hover_info       - Get type info and documentation
+#     get_completions      - Get autocomplete suggestions
+#
+# 📖 UNDERSTANDING CODE
+#     read_file            - Read file from disk (NOT buffer!)
+#     get_symbols          - List all functions/classes in a file
+#     get_project_structure - Browse directory tree
+#     explain_symbol       - AI explanation of what a symbol does
+#     summarize_code       - AI summary of file purpose
+#
+# ✏️  MAKING CHANGES
+#     edit_buffer          - Line-based edits (preview first!)
+#     find_and_replace     - Text-based substitutions
+#     rename_symbol        - LSP-powered refactoring
+#     extract_function     - Extract code into new function
+#
+# ✅ VERIFICATION & REVIEW
+#     get_buffer_diff      - **PRIMARY TOOL** - Shows buffer vs disk
+#     save_buffer          - Write changes to disk
+#     discard_buffer       - Revert unsaved changes
+#     get_diagnostics      - Get linter errors/warnings
+#     quick_review         - AI code review
+#
+# 🐛 DEBUGGING
+#     start_debug_session  - Start debugger with breakpoints
+#     control_execution    - Step, continue, pause
+#     inspect_state        - View variables and call stack
+#
+# ⚙️  ANALYSIS
+#     analyze_dependencies - Find what a file depends on
+#     summarize_changes    - Summarize uncommitted git changes
+#     explain_error        - AI explanation of error messages
+#
+# ============================================================================
+# CORE CONCEPTS
+# ============================================================================
+#
+# 📝 BUFFER vs DISK (Critical Distinction!)
+#
+#   DISK (saved state)
+#     ↑ read_file() - Always reads saved version
+#     ↑ save_buffer() - Writes buffer to disk
+#     ↓ discard_buffer() - Reloads from disk
+#
+#   BUFFER (in-memory edits)
+#     ↑ edit_buffer() - Modifies buffer
+#     ↑ find_and_replace() - Modifies buffer
+#
+#   VERIFICATION
+#     → get_buffer_diff() - Shows BUFFER vs DISK difference
+#     → has_changes=false means buffer matches disk ✓
+#
+# 📋 TYPICAL WORKFLOWS
+#
+#   Safe Editing:
+#     1. edit_buffer(preview=true) → review diff
+#     2. edit_buffer(preview=false) → apply changes
+#     3. get_buffer_diff() → verify all changes
+#     4. save_buffer() → commit to disk
+#
+#   Experimental Editing:
+#     1. find_and_replace(...) → make changes
+#     2. get_buffer_diff() → review
+#     3. discard_buffer() → revert if not satisfied
+#     4. get_buffer_diff() → verify has_changes=false
+#
+# ============================================================================
 # Navigation & Discovery Tools
 # ============================================================================
 
@@ -313,32 +386,20 @@ async def read_file(
     include_diagnostics: bool = False,
     context_lines: int = 0,
 ) -> Dict[str, Any]:
-    """Read file with intelligent context inclusion.
+    """Read file from disk with optional import/diagnostic analysis.
 
-    Read files with optional import detection, diagnostics, and context lines.
-    Content includes line numbers in format "LINE_NUMBER|CONTENT".
+    **⚠️ READS FROM DISK, NOT BUFFER** - Use get_buffer_diff() to see unsaved edits.
 
     Args:
-        path: File path to read (relative to project root or absolute)
-        line_range: Optional tuple of (start_line, end_line) to read specific range (1-indexed, inclusive).
-                   Example: (10, 20) reads lines 10 through 20.
-        include_imports: Whether to detect import statements.
-                        NOTE: Import expansion (showing signatures) is not yet implemented.
-                        Returns import statements with empty signature lists.
-        include_diagnostics: Whether to include LSP diagnostics (linter errors, warnings, type errors, etc.)
-        context_lines: Number of context lines to include around the line_range
+        path: File path (relative to project root or absolute)
+        line_range: (start, end) tuple for specific range (1-indexed, inclusive)
+        include_imports: Detect import statements (signatures not yet implemented)
+        include_diagnostics: Include LSP diagnostics (errors, warnings, etc.)
+        context_lines: Extra lines around line_range
 
     Returns:
-        FileContent object with:
-        - content: File content with line numbers
-        - total_lines: Total number of lines in the file
-        - language: Detected file language (e.g., "python", "javascript")
-        - expanded_imports: Dict of import statements (if requested)
-        - diagnostics: List of diagnostic issues (if requested)
-
-    Raises:
-        FileNotFoundError: If file doesn't exist
-        ValueError: If line_range is invalid (e.g., start > total_lines)
+        - content: File with line numbers "LINE_NUMBER|CONTENT"
+        - total_lines, language, expanded_imports, diagnostics
     """
     ide = await get_ide_server()
     result = await ide.read_file(
@@ -888,6 +949,248 @@ async def get_debug_session_info() -> Dict[str, Any]:
 
 
 # ============================================================================
+# Buffer Editing Tools
+# ============================================================================
+# See CORE CONCEPTS section at top of file for buffer vs disk mental model.
+# ============================================================================
+
+
+@mcp.tool()
+async def get_buffer_info(file: str) -> Dict[str, Any]:
+    """Get information about a buffer's current state.
+    
+    Use this before editing to check if the buffer is already open and has
+    unsaved changes.
+    
+    Args:
+        file: Path to file (relative to project root or absolute)
+    
+    Returns:
+        Buffer information:
+        - is_open: Whether file is open in a buffer
+        - is_modified: Whether buffer has unsaved changes
+        - line_count: Number of lines in the buffer
+        - language: File type/language
+    
+    Example:
+        Check buffer state before editing:
+        {
+          "file": "src/models.py"
+        }
+    """
+    server = await get_ide_server()
+    result = await server.get_buffer_info(file)
+    return _to_dict(result)
+
+
+@mcp.tool()
+async def edit_buffer(
+    file: str,
+    edits: List[Dict[str, Any]],
+    preview: bool = True
+) -> Dict[str, Any]:
+    """Edit lines in a buffer.
+    
+    Make line-based changes to a file. Can preview changes as a unified diff
+    before applying them.
+    
+    Args:
+        file: Path to file (relative to project root or absolute)
+        edits: List of edit operations, each with:
+            - line_start: Starting line number (1-indexed)
+            - line_end: Ending line number (1-indexed, inclusive)
+            - new_text: Replacement text (may contain \\n for multiple lines)
+        preview: If true, return diff without applying. If false, apply changes.
+    
+    Returns:
+        If preview=true:
+        - preview: Unified diff showing changes
+        - applied: false
+        
+        If preview=false:
+        - applied: true
+        - success: Whether edits were successful
+        - line_count: New line count after edits
+        - is_modified: Whether buffer is now modified
+    
+    Example:
+        Preview changes first:
+        {
+          "file": "src/models.py",
+          "edits": [
+            {
+              "line_start": 10,
+              "line_end": 12,
+              "new_text": "def new_function():\\n    pass\\n"
+            }
+          ],
+          "preview": true
+        }
+        
+        Then apply if satisfied:
+        {
+          "file": "src/models.py",
+          "edits": [...],
+          "preview": false
+        }
+    """
+    from .models.responses import BufferEdit
+    
+    server = await get_ide_server()
+    
+    # Convert dict edits to BufferEdit objects
+    buffer_edits = [
+        BufferEdit(
+            line_start=edit["line_start"],
+            line_end=edit["line_end"],
+            new_text=edit["new_text"]
+        )
+        for edit in edits
+    ]
+    
+    result = await server.edit_buffer(file, buffer_edits, preview)
+    return _to_dict(result)
+
+
+@mcp.tool()
+async def save_buffer(file: str) -> Dict[str, Any]:
+    """Write buffer to disk (persists changes).
+
+    **💡 Best practice:** Always call get_buffer_diff() first to review changes.
+
+    Args:
+        file: Path to file
+
+    Returns:
+        - success: true if saved
+        - is_modified: false after successful save
+        - error: Error message if failed
+
+    Note: Buffer must be open (via edit_buffer or find_and_replace).
+    """
+    server = await get_ide_server()
+    result = await server.save_buffer(file)
+    return _to_dict(result)
+
+
+@mcp.tool()
+async def discard_buffer(file: str) -> Dict[str, Any]:
+    """Revert unsaved changes (reload from disk).
+
+    **⚠️ Destructive** - All unsaved changes permanently lost. Buffer stays open.
+
+    Args:
+        file: Path to file
+
+    Returns:
+        - success: true if discarded
+        - is_modified: false after successful discard
+        - error: Error message if failed
+
+    **💡 Verify:** Call get_buffer_diff() after - should show has_changes=false.
+    """
+    server = await get_ide_server()
+    result = await server.discard_buffer(file)
+    return _to_dict(result)
+
+
+@mcp.tool()
+async def get_buffer_diff(file: str) -> Dict[str, Any]:
+    """**PRIMARY VERIFICATION TOOL** - Shows buffer vs disk diff.
+
+    **When to use:**
+    - Before save_buffer() - review what will be written to disk
+    - After discard_buffer() - verify has_changes=false (success indicator)
+    - After multiple edits - see accumulated changes
+
+    Args:
+        file: Path to file
+
+    Returns:
+        - has_changes: true if buffer differs from disk
+        - diff: Unified diff string (null if no changes)
+        - error: Error message if failed
+
+    Example:
+        get_buffer_diff(file="src/models.py")
+        → {"has_changes": true, "diff": "--- a/src/models.py..."}
+        
+        After discard_buffer():
+        → {"has_changes": false}  # Success!
+    """
+    server = await get_ide_server()
+    result = await server.get_buffer_diff(file)
+    return _to_dict(result)
+
+
+@mcp.tool()
+async def find_and_replace(
+    file: str,
+    find: str,
+    replace: str,
+    occurrence: str = "all",
+    preview: bool = True
+) -> Dict[str, Any]:
+    """Find and replace text in a file (convenience tool).
+    
+    Text-based alternative to edit_buffer. More natural for simple substitutions
+    like changing configuration values or fixing typos.
+    
+    Args:
+        file: Path to file (relative to project root or absolute)
+        find: Text to find (exact match, whitespace-sensitive)
+        replace: Text to replace with
+        occurrence: Which occurrences to replace:
+            - "all": Replace all occurrences (default)
+            - "first": Replace only the first occurrence
+            - "2", "3", etc.: Replace specific occurrence (1-indexed)
+        preview: If true, return preview diff. If false, apply changes.
+    
+    Returns:
+        Find/replace result:
+        - success: Whether operation succeeded
+        - preview: Unified diff (if preview=true)
+        - applied: Whether changes were applied
+        - replacements_made: Number of replacements
+        - line_count: Line count after changes (if applied)
+        - is_modified: Modified status (if applied)
+        - error: Error message if failed
+    
+    Example (preview):
+        Change log level:
+        {
+          "file": "config.py",
+          "find": "log_level = \\"INFO\\"",
+          "replace": "log_level = \\"DEBUG\\"",
+          "occurrence": "all",
+          "preview": true
+        }
+    
+    Example (apply):
+        Fix typo (first occurrence only):
+        {
+          "file": "README.md",
+          "find": "teh",
+          "replace": "the",
+          "occurrence": "first",
+          "preview": false
+        }
+    
+    When to use vs edit_buffer:
+        - find_and_replace: Simple text substitutions, config changes
+        - edit_buffer: Structural changes, inserting lines, precise edits
+    
+    Note:
+        - Whitespace-sensitive (spaces/tabs must match exactly)
+        - For complex edits, use edit_buffer with line numbers
+        - Internally uses edit_buffer for actual modifications
+    """
+    server = await get_ide_server()
+    result = await server.find_and_replace(file, find, replace, occurrence, preview)
+    return _to_dict(result)
+
+
+# ============================================================================
 # REMOVED: Low-Value Testing & Execution Tools
 # ============================================================================
 # run_tests: Agents can run `pytest`, `cargo test`, `go test` directly
@@ -930,6 +1233,370 @@ This MCP server provides AI-powered IDE capabilities for this project, including
 All file paths in tool calls are relative to the project root above.
 """
     return info
+
+
+# ============================================================================
+# Documentation Resources
+# ============================================================================
+# These resources provide structured guidance to LLM agents using Otter.
+# Agents can query these to understand concepts and workflows.
+
+
+@mcp.resource("otter://docs/quick-start")
+async def get_quick_start_guide() -> str:
+    """Quick start guide showing all available tools by category."""
+    return """# Otter Quick Start Guide
+
+## 🔍 Code Navigation
+- **find_definition** - Jump to where a symbol is defined
+- **find_references** - Find all usages of a symbol
+- **get_hover_info** - Get type info and documentation
+- **get_completions** - Get autocomplete suggestions
+
+## 📖 Understanding Code
+- **read_file** - Read file from disk (NOT buffer!)
+- **get_symbols** - List all functions/classes in a file
+- **get_project_structure** - Browse directory tree
+- **explain_symbol** - AI explanation of what a symbol does
+- **summarize_code** - AI summary of file purpose
+
+## ✏️ Making Changes
+- **edit_buffer** - Line-based edits (preview first!)
+- **find_and_replace** - Text-based substitutions
+- **rename_symbol** - LSP-powered refactoring
+- **extract_function** - Extract code into new function
+
+## ✅ Verification & Review
+- **get_buffer_diff** - **PRIMARY TOOL** - Shows buffer vs disk
+- **save_buffer** - Write changes to disk
+- **discard_buffer** - Revert unsaved changes
+- **get_diagnostics** - Get linter errors/warnings
+- **quick_review** - AI code review
+
+## 🐛 Debugging
+- **start_debug_session** - Start debugger with breakpoints
+- **control_execution** - Step, continue, pause
+- **inspect_state** - View variables and call stack
+
+## ⚙️ Analysis
+- **analyze_dependencies** - Find what a file depends on
+- **summarize_changes** - Summarize uncommitted git changes
+- **explain_error** - AI explanation of error messages
+"""
+
+
+@mcp.resource("otter://docs/buffer-vs-disk")
+async def get_buffer_vs_disk_guide() -> str:
+    """Critical explanation of the buffer vs disk distinction."""
+    return """# Buffer vs Disk - CRITICAL CONCEPT
+
+This is the **most important concept** to understand when using Otter.
+
+## The Mental Model
+
+```
+DISK (saved state)
+  ↑ read_file() - Always reads saved version
+  ↑ save_buffer() - Writes buffer to disk
+  ↓ discard_buffer() - Reloads from disk
+
+BUFFER (in-memory edits)
+  ↑ edit_buffer() - Modifies buffer
+  ↑ find_and_replace() - Modifies buffer
+
+VERIFICATION
+  → get_buffer_diff() - Shows BUFFER vs DISK difference
+  → has_changes=false means buffer matches disk ✓
+```
+
+## Key Rules
+
+1. **read_file() ALWAYS reads from DISK** - It never shows buffer contents
+   - If you've made edits that haven't been saved, read_file() won't show them
+   - To see pending edits, use get_buffer_diff()
+
+2. **Edits are in-memory until save_buffer()**
+   - edit_buffer() and find_and_replace() modify the buffer
+   - Changes are NOT on disk until you call save_buffer()
+
+3. **get_buffer_diff() is your verification tool**
+   - Shows what's different between buffer and disk
+   - Use before save_buffer() to review what will be written
+   - Use after discard_buffer() to verify it worked (should show has_changes=false)
+
+4. **has_changes=false is the success indicator**
+   - After save_buffer() - buffer should match disk
+   - After discard_buffer() - buffer should match disk
+
+## Common Mistakes
+
+### ❌ Mistake 1: Using read_file() to check edits
+```
+edit_buffer(file="src/models.py", ...)
+read_file("src/models.py")  # Still shows old version!
+```
+
+### ✅ Correct:
+```
+edit_buffer(file="src/models.py", ...)
+get_buffer_diff("src/models.py")  # Shows pending changes
+```
+
+### ❌ Mistake 2: Saving without review
+```
+edit_buffer(preview=false, ...)
+save_buffer(...)  # What did I just save?
+```
+
+### ✅ Correct:
+```
+edit_buffer(preview=false, ...)
+get_buffer_diff(...)  # Review all changes
+save_buffer(...)  # Now I know what I'm saving
+```
+
+### ❌ Mistake 3: Not verifying discard
+```
+discard_buffer(...)
+# Hope it worked!
+```
+
+### ✅ Correct:
+```
+discard_buffer(...)
+diff = get_buffer_diff(...)
+# diff.has_changes should be false - verified!
+```
+"""
+
+
+@mcp.resource("otter://docs/workflows")
+async def get_common_workflows() -> str:
+    """Common workflows for editing, reviewing, and saving code."""
+    return """# Common Workflows
+
+## Safe Editing (Recommended)
+
+Always preview before applying, then verify before saving:
+
+```
+1. edit_buffer(preview=true, ...)
+   → Review the diff to make sure it's correct
+
+2. edit_buffer(preview=false, ...)
+   → Apply the changes to buffer
+
+3. get_buffer_diff(...)
+   → Verify all accumulated changes
+
+4. save_buffer(...)
+   → Commit to disk
+```
+
+**Why this works:**
+- Preview catches mistakes before applying
+- get_buffer_diff() shows the complete picture
+- You always know exactly what you're saving
+
+## Experimental Editing
+
+Try changes and revert if not satisfied:
+
+```
+1. find_and_replace(...)
+   → Make experimental changes
+
+2. get_buffer_diff(...)
+   → Review what changed
+
+3. discard_buffer(...)
+   → Revert if not satisfied
+
+4. get_buffer_diff(...)
+   → Verify has_changes=false (success!)
+```
+
+**When to use:**
+- Exploring different approaches
+- Not sure if change will work
+- Want to try something without commitment
+
+## Multiple Edits Before Save
+
+Accumulate several changes, then review all at once:
+
+```
+1. edit_buffer(...)
+   → First change
+
+2. find_and_replace(...)
+   → Second change
+
+3. edit_buffer(...)
+   → Third change
+
+4. get_buffer_diff(...)
+   → Review ALL changes together
+
+5. save_buffer() or discard_buffer()
+   → Commit all or revert all
+```
+
+**Why this is powerful:**
+- Changes accumulate in buffer
+- Single diff shows complete picture
+- All-or-nothing commit
+
+## Tool Selection
+
+**Simple text replacement:**
+```
+find_and_replace(
+    file="config.py",
+    find='log_level = "INFO"',
+    replace='log_level = "DEBUG"',
+    occurrence="all",
+    preview=true
+)
+```
+
+**Structural changes:**
+```
+edit_buffer(
+    file="src/models.py",
+    edits=[{
+        "line_start": 10,
+        "line_end": 15,
+        "new_text": "def new_function():\\n    pass\\n"
+    }],
+    preview=true
+)
+```
+
+**See pending edits:**
+```
+get_buffer_diff(file="src/models.py")
+# NOT read_file() - that shows disk!
+```
+
+## Best Practices
+
+### ✅ Always DO:
+- Preview edits first (preview=true)
+- Call get_buffer_diff() before save_buffer()
+- Verify after discard_buffer() (has_changes=false)
+- Use find_and_replace for simple substitutions
+- Use edit_buffer for structural changes
+
+### ❌ Never DO:
+- Use read_file() to check pending edits
+- Save without reviewing
+- Assume discard worked without checking
+- Mix up buffer state with disk state
+"""
+
+
+@mcp.resource("otter://docs/troubleshooting")
+async def get_troubleshooting_guide() -> str:
+    """Solutions to common problems and confusions."""
+    return """# Troubleshooting Guide
+
+## Problem: My edits aren't showing in read_file()
+
+**Symptoms:**
+- Called edit_buffer() or find_and_replace()
+- read_file() still shows old content
+
+**Cause:**
+read_file() reads from DISK, not BUFFER.
+
+**Solution:**
+Use get_buffer_diff() to see pending edits:
+```
+get_buffer_diff(file="src/models.py")
+→ Shows buffer vs disk difference
+```
+
+## Problem: I'm not sure what I'm about to save
+
+**Symptoms:**
+- Made several edits
+- Don't remember all the changes
+- Afraid to call save_buffer()
+
+**Solution:**
+Always call get_buffer_diff() before saving:
+```
+diff = get_buffer_diff(file="src/models.py")
+print(diff.diff)  # Review unified diff
+# If satisfied:
+save_buffer(file="src/models.py")
+```
+
+## Problem: Did discard_buffer() work?
+
+**Symptoms:**
+- Called discard_buffer()
+- Not sure if it reverted correctly
+
+**Solution:**
+Verify with get_buffer_diff():
+```
+discard_buffer(file="src/models.py")
+diff = get_buffer_diff(file="src/models.py")
+# diff.has_changes should be false!
+```
+
+## Problem: Changes disappeared after reading file
+
+**Symptoms:**
+- Made edits
+- read_file() shows old version
+- Worried changes were lost
+
+**Cause:**
+Changes are still in buffer! read_file() just shows disk.
+
+**Solution:**
+Your changes are safe in buffer:
+```
+get_buffer_diff(...)  # See your changes
+save_buffer(...)      # Save them to disk
+```
+
+## Problem: Getting confused about state
+
+**Symptoms:**
+- Don't know if file is modified
+- Not sure what's in buffer vs disk
+
+**Solution:**
+Use get_buffer_info() and get_buffer_diff():
+```
+info = get_buffer_info(file="src/models.py")
+print(info.is_modified)  # Is buffer modified?
+
+diff = get_buffer_diff(file="src/models.py")
+print(diff.has_changes)  # Does buffer differ from disk?
+```
+
+## Success Indicators
+
+You'll know things worked when:
+
+- ✅ save_buffer() → is_modified=false
+- ✅ discard_buffer() → has_changes=false (check with get_buffer_diff)
+- ✅ edit_buffer(preview=true) → shows expected diff
+- ✅ get_buffer_diff() after save → has_changes=false
+
+## Quick Reference
+
+**See saved content:** read_file()
+**See pending edits:** get_buffer_diff()
+**Review before save:** get_buffer_diff() (REQUIRED!)
+**Verify discard:** get_buffer_diff() (should be has_changes=false)
+**Check buffer state:** get_buffer_info()
+"""
 
 
 # ============================================================================

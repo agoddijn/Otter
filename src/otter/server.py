@@ -33,6 +33,7 @@ from .neovim.client import NeovimClient
 from .services.ai import AIService
 from .services.analysis import AnalysisService
 from .services.debugging import DebugService
+from .services.editing import EditingService
 from .services.navigation import NavigationService
 from .services.refactoring import RefactoringService
 from .services.workspace import WorkspaceService
@@ -64,6 +65,9 @@ class CliIdeServer:
             project_path=self.project_path, nvim_client=self.nvim_client
         )
         self.debugging = DebugService(  # type: ignore
+            nvim_client=self.nvim_client, project_path=self.project_path
+        )
+        self.editing = EditingService(  # type: ignore
             nvim_client=self.nvim_client, project_path=self.project_path
         )
         self.ai = AIService(
@@ -268,6 +272,37 @@ class CliIdeServer:
         include_references: bool = True,
     ) -> CodeSummary:
         return await self.ai.explain_symbol(file, line, character, include_references)
+    
+    # Buffer Editing
+    async def get_buffer_info(self, file: str):
+        """Get buffer information."""
+        from .models.responses import BufferInfo
+        return await self.editing.get_buffer_info(file)
+    
+    async def edit_buffer(self, file: str, edits: List, preview: bool = True):
+        """Edit buffer lines."""
+        from .models.responses import EditResult
+        return await self.editing.edit_buffer(file, edits, preview)
+    
+    async def save_buffer(self, file: str):
+        """Save buffer to disk."""
+        from .models.responses import SaveResult
+        return await self.editing.save_buffer(file)
+    
+    async def discard_buffer(self, file: str):
+        """Discard buffer changes."""
+        from .models.responses import DiscardResult
+        return await self.editing.discard_buffer(file)
+    
+    async def get_buffer_diff(self, file: str):
+        """Get buffer diff."""
+        from .models.responses import BufferDiff
+        return await self.editing.get_buffer_diff(file)
+    
+    async def find_and_replace(self, file: str, find: str, replace: str, occurrence: str = "all", preview: bool = True):
+        """Find and replace text."""
+        from .models.responses import FindReplaceResult
+        return await self.editing.find_and_replace(file, find, replace, occurrence, preview)
 
     # Low-value features removed (agents can use shell commands directly)
 
