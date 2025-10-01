@@ -14,13 +14,14 @@ This directory contains comprehensive documentation for Otter - the IDE for AI a
 | **[USER_GUIDE.md](USER_GUIDE.md)** | Complete tool reference and usage | Users, Integrators |
 | **[DEPENDENCIES.md](DEPENDENCIES.md)** | System requirements and setup | Users, DevOps |
 
-### For Contributors (3 documents)
+### For Contributors (4 documents)
 
 | Document | Purpose | Audience |
 |----------|---------|----------|
 | **[CONTRIBUTING.md](CONTRIBUTING.md)** | How to contribute, code patterns, testing | Contributors |
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | High-level design and decisions | Developers |
 | **[TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md)** | Neovim, LSP, TreeSitter, DAP details | Developers |
+| **[ROADMAP.md](ROADMAP.md)** | Planned tools and features by priority | Contributors, Users |
 
 ### Project Documentation (2 documents)
 
@@ -51,6 +52,16 @@ This directory contains comprehensive documentation for Otter - the IDE for AI a
 ---
 
 ## 📄 Document Summaries
+
+### ROADMAP.md
+**What**: Planned tools and features with detailed specifications  
+**When to read**: Understanding future direction or picking tasks  
+**Key sections**:
+- High priority tools (buffer editing, LSP quick fixes)
+- Medium priority tools (advanced navigation, refactoring)
+- Low priority tools (polish and helpers)
+- Out of scope features (what Otter won't do)
+- Implementation estimates and phases
 
 ### README.md (Project Root)
 **What**: Project overview, installation, quick start  
@@ -146,9 +157,10 @@ This directory contains comprehensive documentation for Otter - the IDE for AI a
 
 ### "I want to contribute"
 1. [CONTRIBUTING.md](CONTRIBUTING.md) - Start here
-2. [ARCHITECTURE.md](ARCHITECTURE.md) - Design principles
-3. [TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md) - Implementation details
-4. [../tests/TESTING.md](../tests/TESTING.md) - Testing guide
+2. [ROADMAP.md](ROADMAP.md) - What needs to be built
+3. [ARCHITECTURE.md](ARCHITECTURE.md) - Design principles
+4. [TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md) - Implementation details
+5. [../tests/TESTING.md](../tests/TESTING.md) - Testing guide
 
 ### "I'm having issues"
 1. [DEPENDENCIES.md](DEPENDENCIES.md) - Dependency troubleshooting
@@ -189,10 +201,10 @@ This directory contains comprehensive documentation for Otter - the IDE for AI a
 | Category | Documents | Purpose |
 |----------|-----------|---------|
 | User Docs | 3 | Using Otter |
-| Contributor Docs | 3 | Development |
+| Contributor Docs | 4 | Development & roadmap |
 | Project Docs | 2 | Testing & history |
 | Index | 2 | Navigation (this file + README) |
-| **Total** | **10** | **Focused, consolidated** |
+| **Total** | **11** | **Focused, consolidated** |
 
 ---
 

@@ -38,12 +38,13 @@ class AIService:
     - Helping agents avoid bloating their own context
     """
     
-    def __init__(self, llm_client: Optional[LLMClient] = None, nvim_client=None):
+    def __init__(self, llm_client: Optional[LLMClient] = None, nvim_client=None, project_path: Optional[str] = None):
         """Initialize AI service.
         
         Args:
             llm_client: LLM client. If None, creates from environment.
             nvim_client: Optional Neovim client for LSP integration.
+            project_path: Project root path for resolving relative paths.
         """
         if llm_client is None:
             config = LLMConfig.from_env()
@@ -51,6 +52,7 @@ class AIService:
         
         self.llm = llm_client
         self.nvim_client = nvim_client  # For LSP-powered explanations
+        self.project_path = project_path or str(Path.cwd())
     
     async def summarize_code(
         self,
@@ -82,10 +84,15 @@ class AIService:
             "Payment processing service integrating Stripe and PayPal with 
              retry logic and webhook handling."
         """
-        # Read the file content
+        # Resolve file path using centralized utilities
         from pathlib import Path
+        from ..utils.path import resolve_workspace_path
+        
+        file_path = resolve_workspace_path(file, self.project_path)
+        
+        # Read the file content
         try:
-            content = Path(file).read_text()
+            content = file_path.read_text()
         except FileNotFoundError:
             raise FileNotFoundError(f"File not found: {file}")
         except Exception as e:
@@ -165,7 +172,7 @@ Respond in a clear, technical style. Focus on what the code does, not how it's s
         Agent just provides file path and git ref - we handle the diff.
         
         Args:
-            file: File path
+            file: File path (absolute or relative to project root)
             git_ref: Git reference to compare against (default: HEAD~1, i.e., previous commit)
                     Can be: "HEAD~1", "main", commit hash, etc.
         
@@ -183,21 +190,46 @@ Respond in a clear, technical style. Focus on what the code does, not how it's s
             >>> print(summary.breaking_changes)
             ["Removed deprecated /v1/users endpoint"]
         """
-        # Get current content
+        # Resolve file path using centralized utilities
         from pathlib import Path
+        import subprocess
+        from ..utils.path import resolve_workspace_path
+        
+        file_path = resolve_workspace_path(file, self.project_path)
+        
+        # Get current content
         try:
-            new_content = Path(file).read_text()
+            new_content = file_path.read_text()
         except FileNotFoundError:
             raise FileNotFoundError(f"File not found: {file}")
         
-        # Get old content from git
-        import subprocess
+        # Get git repository root to make path relative for git command
         try:
-            result = subprocess.run(
-                ["git", "show", f"{git_ref}:{file}"],
+            git_root_result = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
                 capture_output=True,
                 text=True,
-                check=True
+                check=True,
+                cwd=file_path.parent
+            )
+            git_root = Path(git_root_result.stdout.strip())
+        except subprocess.CalledProcessError:
+            raise RuntimeError(f"Not in a git repository: {file_path.parent}")
+        
+        # Make file path relative to git root for git show command
+        try:
+            git_relative_path = file_path.relative_to(git_root)
+        except ValueError:
+            raise RuntimeError(f"File {file_path} is not in git repository {git_root}")
+        
+        # Get old content from git using relative path
+        try:
+            result = subprocess.run(
+                ["git", "show", f"{git_ref}:{git_relative_path}"],
+                capture_output=True,
+                text=True,
+                check=True,
+                cwd=git_root
             )
             old_content = result.stdout
         except subprocess.CalledProcessError as e:
@@ -307,10 +339,15 @@ Be concise and technical. Focus on impact, not implementation details."""
             ...     print(f"{issue.severity}: {issue.message}")
             "critical: Password stored in plaintext (line 45)"
         """
-        # Read the file content
+        # Resolve file path using centralized utilities
         from pathlib import Path
+        from ..utils.path import resolve_workspace_path
+        
+        file_path = resolve_workspace_path(file, self.project_path)
+        
+        # Read the file content
         try:
-            content = Path(file).read_text()
+            content = file_path.read_text()
         except FileNotFoundError:
             raise FileNotFoundError(f"File not found: {file}")
         except Exception as e:
@@ -333,15 +370,16 @@ File: {file}
 {"..." if len(content) > 4000 else ""}
 ```
 
-Find obvious issues ONLY. For each issue provide:
-- Severity: critical/warning/suggestion
-- Category: {focus_str}
-- Line number (if applicable)
-- Message: What's wrong
-- Suggestion: How to fix (brief)
+Find obvious issues ONLY. Format each issue exactly like this:
+
+CRITICAL: [issue description] (line XX)
+WARNING: [issue description] (line XX)
+SUGGESTION: [issue description] (line XX)
+
+Where XX is the actual line number. Always include (line XX) for every issue.
 
 Be concise. Only report clear issues, not style preferences.
-If code looks good, say so."""
+If code looks good, say "Code looks good - no obvious issues found."""
         
         # Get LLM response
         response = await self.llm.complete(
@@ -354,35 +392,30 @@ If code looks good, say so."""
         # Parse response to extract issues
         issues: List[ReviewIssue] = []
         
-        # Simple parsing (look for severity keywords)
+        # Enhanced parsing with better line number extraction
+        import re
         lines = response.strip().split("\n")
-        current_issue: Optional[dict] = None
         
         for line in lines:
-            line_lower = line.lower()
+            line_stripped = line.strip()
+            if not line_stripped:
+                continue
             
-            # Check for severity markers
-            if "critical:" in line_lower or "warning:" in line_lower or "suggestion:" in line_lower:
-                if current_issue:
-                    issues.append(ReviewIssue(**current_issue))
+            # Match pattern: SEVERITY: message (line XX)
+            match = re.match(r'(CRITICAL|WARNING|SUGGESTION):\s*(.+?)(?:\s*\(line\s+(\d+)\))?', line_stripped, re.IGNORECASE)
+            
+            if match:
+                severity = match.group(1).lower()
+                message = match.group(2).strip()
+                line_num_str = match.group(3)
+                line_num = int(line_num_str) if line_num_str else None
                 
-                # Start new issue
-                if "critical:" in line_lower:
-                    severity = "critical"
-                elif "warning:" in line_lower:
-                    severity = "warning"
-                else:
-                    severity = "suggestion"
-                
-                message = line.split(":", 1)[1].strip() if ":" in line else line.strip()
-                
-                # Extract line number if present
-                line_num = None
-                if "line" in message.lower():
-                    import re
-                    match = re.search(r'line\s+(\d+)', message.lower())
-                    if match:
-                        line_num = int(match.group(1))
+                # If line number wasn't in parentheses, try to extract from message
+                if not line_num:
+                    # Try patterns like "line XX" or "on line XX" or "at line XX"
+                    line_match = re.search(r'(?:at |on |line )\s*(\d+)', message, re.IGNORECASE)
+                    if line_match:
+                        line_num = int(line_match.group(1))
                 
                 # Determine category from focus areas
                 category = "general"
@@ -391,19 +424,13 @@ If code looks good, say so."""
                         category = focus_area
                         break
                 
-                current_issue = {
-                    "severity": severity,
-                    "category": category,
-                    "line": line_num,
-                    "message": message,
-                    "suggestion": None,
-                }
-            elif current_issue and ("fix:" in line_lower or "suggestion:" in line_lower):
-                current_issue["suggestion"] = line.split(":", 1)[1].strip() if ":" in line else line.strip()
-        
-        # Add last issue
-        if current_issue:
-            issues.append(ReviewIssue(**current_issue))
+                issues.append(ReviewIssue(
+                    severity=severity,
+                    category=category,
+                    line=line_num,
+                    message=message,
+                    suggestion=None
+                ))
         
         # Extract overall assessment
         overall = "No critical issues found."
@@ -430,10 +457,7 @@ If code looks good, say so."""
     ) -> ErrorExplanation:
         """Explain a cryptic error message.
         
-        Interprets error messages and provides actionable fixes. Use this when:
-        - Error message is cryptic or unclear
-        - Want to understand root cause quickly
-        - Need suggestions for fixing the error
+        Interprets error messages and provides actionable fixes.
         
         Args:
             error_message: The error message/traceback
@@ -443,17 +467,6 @@ If code looks good, say so."""
         
         Returns:
             ErrorExplanation with explanation, causes, and fixes
-        
-        Example:
-            >>> explanation = await ai.explain_error(
-            ...     "TypeError: 'NoneType' object is not subscriptable",
-            ...     context_file="app.py",
-            ...     context_content=code_snippet
-            ... )
-            >>> print(explanation.explanation)
-            "You're trying to access an index on a None value."
-            >>> print(explanation.suggested_fixes[0])
-            "Check if variable is not None before accessing"
         """
         # Use fast model for error explanation
         tier = ModelTier.FAST
@@ -550,12 +563,9 @@ Be practical and actionable."""
     ) -> CodeSummary:
         """Explain a symbol using LSP + LLM.
         
-        Uses LSP to find symbol definition and references, then LLM to explain:
-        - What the symbol is/does
-        - Where and how it's used
-        - Its role in the codebase
-        
-        This is smarter than just reading code - it provides semantic understanding.
+        Uses LSP to find symbol definition and references, then LLM to explain
+        what the symbol is, what it does, and how it is used in the codebase.
+        This provides semantic understanding beyond just reading code.
         
         Args:
             file: File path
@@ -567,48 +577,80 @@ Be practical and actionable."""
             CodeSummary with comprehensive explanation
         
         Example:
-            >>> explanation = await ai.explain_symbol(
-            ...     "server.py",
-            ...     line=45,
-            ...     character=10,
-            ...     include_references=True
-            ... )
-            >>> print(explanation.summary)
-            "handle_request() is the main request handler middleware.
-             Called by 15 routes in the API layer. Handles authentication,
-             logging, and error wrapping."
+            Get explanation for a symbol at a specific position.
         """
         if not self.nvim_client:
             raise RuntimeError("explain_symbol requires nvim_client for LSP integration")
         
-        # 1. Get hover info (definition)
-        hover_info = await self.nvim_client.get_hover_info(file, line, character)
+        # 1. Get hover info (definition) - use lsp_hover directly
+        lsp_hover_result = await self.nvim_client.lsp_hover(file, line, character)
+        
+        if not lsp_hover_result:
+            raise RuntimeError(f"No symbol found at {file}:{line}:{character}")
+        
+        # Extract hover text
+        hover_contents = lsp_hover_result.get("contents", {})
+        if isinstance(hover_contents, str):
+            hover_info = hover_contents
+        elif isinstance(hover_contents, dict):
+            hover_info = hover_contents.get("value", str(hover_contents))
+        elif isinstance(hover_contents, list):
+            parts = []
+            for item in hover_contents:
+                if isinstance(item, str):
+                    parts.append(item)
+                elif isinstance(item, dict):
+                    parts.append(item.get("value", ""))
+            hover_info = "\n".join(parts)
+        else:
+            hover_info = str(hover_contents)
         
         # 2. Optionally get references
         references_context = ""
         if include_references:
             try:
-                references = await self.nvim_client.find_references(file, line, character)
+                # Use lsp_references directly from nvim_client
+                lsp_references = await self.nvim_client.lsp_references(file, line, character)
                 
-                # Get a few reference snippets (limit to avoid context bloat)
-                reference_snippets = []
-                for ref in references[:5]:  # Max 5 references
-                    try:
-                        from pathlib import Path
-                        ref_content = Path(ref.file).read_text().split("\n")
-                        # Get 3 lines of context around reference
-                        start = max(0, ref.line - 1)
-                        end = min(len(ref_content), ref.line + 2)
-                        snippet = "\n".join(ref_content[start:end])
-                        reference_snippets.append(
-                            f"# {ref.file}:{ref.line}\n{snippet}"
-                        )
-                    except Exception:
-                        continue
-                
-                if reference_snippets:
-                    references_context = "\n\nUsage examples:\n" + "\n\n".join(reference_snippets)
-                    references_context += f"\n\n(Found {len(references)} total references)"
+                if lsp_references:
+                    # Get a few reference snippets (limit to avoid context bloat)
+                    reference_snippets = []
+                    for ref_location in lsp_references[:5]:  # Max 5 references
+                        try:
+                            from pathlib import Path
+                            from urllib.parse import unquote, urlparse
+                            
+                            # Parse LSP location
+                            uri = ref_location.get("uri") or ref_location.get("targetUri")
+                            range_data = ref_location.get("range") or ref_location.get("targetRange")
+                            
+                            if not uri or not range_data:
+                                continue
+                            
+                            # Convert URI to file path
+                            if uri.startswith("file://"):
+                                parsed = urlparse(uri)
+                                ref_file = unquote(parsed.path)
+                            else:
+                                ref_file = uri
+                            
+                            ref_line = range_data["start"]["line"] + 1  # Convert to 1-indexed
+                            
+                            # Read file and get context
+                            ref_content = Path(ref_file).read_text().split("\n")
+                            # Get 3 lines of context around reference
+                            start = max(0, ref_line - 2)
+                            end = min(len(ref_content), ref_line + 1)
+                            snippet = "\n".join(ref_content[start:end])
+                            reference_snippets.append(
+                                f"# {ref_file}:{ref_line}\n{snippet}"
+                            )
+                        except Exception:
+                            continue
+                    
+                    if reference_snippets:
+                        references_context = "\n\nUsage examples:\n" + "\n\n".join(reference_snippets)
+                        references_context += f"\n\n(Found {len(lsp_references)} total references)"
             except Exception as e:
                 logger.warning(f"Failed to get references for symbol explanation: {e}")
         
@@ -621,8 +663,8 @@ Definition:
 
 Provide:
 1. What this symbol is (function/class/variable/etc.)
-2. What it does / its purpose
-3. How and where it's used in the codebase
+2. What it does and its purpose
+3. How and where it is used in the codebase
 4. Any important patterns or conventions
 
 Be concise but comprehensive (3-5 sentences)."""

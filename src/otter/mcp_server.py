@@ -645,7 +645,7 @@ async def get_diagnostics(
     file: str | None = None,
     severity: List[str] | None = None,
     include_fixes: bool = False,
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """Get linting and type checking results.
 
     Retrieve diagnostics from LSP servers (errors, warnings, hints).
@@ -656,7 +656,10 @@ async def get_diagnostics(
         include_fixes: Whether to include suggested fixes
 
     Returns:
-        List of diagnostics with severity, message, location, and optional fixes
+        DiagnosticsResult containing:
+            - diagnostics: List of diagnostics with severity, message, location, and optional fixes
+            - total_count: Total number of diagnostics found
+            - file: File that was analyzed (if specific file was requested)
     """
     ide = await get_ide_server()
     result = await ide.get_diagnostics(file, severity, include_fixes)

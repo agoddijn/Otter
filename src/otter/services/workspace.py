@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from ..models.responses import (
     Diagnostic,
+    DiagnosticsResult,
     FileContent,
     ProjectTree,
     Symbol,
@@ -655,7 +656,7 @@ class WorkspaceService:
         file: Optional[str] = None,
         severity: Optional[List[str]] = None,
         include_fixes: bool = False,
-    ) -> List[Diagnostic]:
+    ) -> DiagnosticsResult:
         """Get LSP diagnostics for files in the project.
 
         Args:
@@ -664,7 +665,7 @@ class WorkspaceService:
             include_fixes: Whether to include fix suggestions (currently not implemented)
 
         Returns:
-            List of Diagnostic objects
+            DiagnosticsResult with diagnostics list and metadata
 
         Raises:
             RuntimeError: If Neovim client not available
@@ -706,7 +707,11 @@ class WorkspaceService:
         #     for diag in diagnostics:
         #         diag.fix = await self._get_diagnostic_fix(diag)
 
-        return diagnostics
+        return DiagnosticsResult(
+            diagnostics=diagnostics,
+            total_count=len(diagnostics),
+            file=file
+        )
 
     async def _get_all_diagnostics(self) -> List[Diagnostic]:
         """Get diagnostics from all open buffers in Neovim.

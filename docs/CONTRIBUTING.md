@@ -222,6 +222,7 @@ make docs       # Verify docs build
 - **Type variations**: Accept `["class", "struct"]` for Rust compatibility
 - **Naming conventions**: Handle `snake_case` vs `camelCase`
 - **Test with relative paths**: Services must handle both absolute and relative paths. Tests using only absolute paths won't catch path resolution bugs (see `rename_symbol` fix)
+- **Git commands need repo-relative paths**: `git show REF:path` requires paths relative to git root, not absolute. Find root with `git rev-parse --show-toplevel`, then use `path.relative_to(root)`
 
 ## Agent-Driven Self-Improvement
 

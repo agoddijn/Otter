@@ -346,6 +346,7 @@ See [ARCHITECTURE.md](./docs/ARCHITECTURE.md) for detailed architectural documen
 
 ### Developer Documentation
 - **[Contributing](./docs/CONTRIBUTING.md)** - How to contribute to Otter
+- **[Roadmap](./docs/ROADMAP.md)** - Planned tools and features with specifications
 - **[Architecture](./docs/ARCHITECTURE.md)** - Architecture and design decisions
 - **[Technical Guide](./docs/TECHNICAL_GUIDE.md)** - Neovim and TreeSitter integration details
 - **[Testing Guide](./tests/TESTING.md)** - Complete testing documentation
@@ -381,6 +382,7 @@ See [ARCHITECTURE.md](./docs/ARCHITECTURE.md) for detailed architectural documen
 🚧 **Next Priorities**:
 1. `rename_symbol` - LSP-powered safe refactoring (high-value)
 2. `extract_function` - Smart code extraction (medium-value)
+3. **12 additional tools planned** - See [ROADMAP.md](./docs/ROADMAP.md) for complete specifications
 
 ❌ **Removed** (agents can use shell directly):
 - Text/regex search → Use `rg` 

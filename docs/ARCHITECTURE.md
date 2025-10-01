@@ -230,8 +230,16 @@ await helper.wait_for_state("paused", timeout=10.0)
 
 ## Next Priorities
 
+See [ROADMAP.md](ROADMAP.md) for complete specification of planned tools.
+
+**Immediate priorities**:
 1. **rename_symbol** - LSP-powered safe refactoring (high-value)
 2. **extract_function** - Smart code extraction (medium-value)
+
+**Next phase** (12 new tools planned):
+- **High priority**: `edit_buffer`, `get_buffer_info`, `apply_code_action`
+- **Medium priority**: `get_call_hierarchy`, `find_implementations`, `inline_function`, `move_symbol`, `organize_imports`
+- **Low priority**: `get_signature_help`, `get_type_hierarchy`, `change_signature`, `replace_in_buffer`
 
 ---
 

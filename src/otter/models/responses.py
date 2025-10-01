@@ -223,6 +223,18 @@ class Diagnostic:
 
 
 @dataclass
+class DiagnosticsResult:
+    """Result containing diagnostics with metadata.
+    
+    Wraps diagnostic list to ensure proper MCP protocol serialization
+    and provide additional context.
+    """
+    diagnostics: List[Diagnostic]
+    total_count: int
+    file: Optional[str] = None  # File that was analyzed, if specific file requested
+
+
+@dataclass
 class DependencyGraph:
     file: str
     imports: List[str] = field(default_factory=list)
@@ -406,6 +418,7 @@ __all__ = [
     "Fix",
     "RelatedInfo",
     "Diagnostic",
+    "DiagnosticsResult",
     "DependencyGraph",
     "TestResults",
     "ExecutionTrace",

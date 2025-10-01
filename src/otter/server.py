@@ -13,6 +13,7 @@ from .models.responses import (
     Definition,
     DependencyGraph,
     Diagnostic,
+    DiagnosticsResult,
     ErrorExplanation,
     ExecutionState,
     ExtractResult,
@@ -65,7 +66,10 @@ class CliIdeServer:
         self.debugging = DebugService(  # type: ignore
             nvim_client=self.nvim_client, project_path=self.project_path
         )
-        self.ai = AIService(nvim_client=self.nvim_client)  # Pass nvim_client for LSP integration
+        self.ai = AIService(
+            nvim_client=self.nvim_client,
+            project_path=self.project_path
+        )  # Pass nvim_client and project_path for LSP integration and path resolution
 
     async def start(self) -> None:
         """Start the Neovim instance and initialize LSP servers.
@@ -178,7 +182,7 @@ class CliIdeServer:
         file: Optional[str] = None,
         severity: Optional[List[str]] = None,
         include_fixes: bool = False,
-    ) -> List[Diagnostic]:
+    ) -> DiagnosticsResult:
         return await self.workspace.get_diagnostics(file, severity, include_fixes)
 
     async def analyze_dependencies(

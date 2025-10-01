@@ -8,6 +8,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added - Comprehensive Feature Roadmap
+
+**New documentation: ROADMAP.md**
+
+Added detailed specifications for 12 planned tools, prioritized by value and feasibility:
+
+**High Priority (Critical Gaps):**
+- `edit_buffer` - Core editing primitive with LSP sync and preview mode
+- `get_buffer_info` - Buffer state queries before editing
+- `apply_code_action` - LSP quick fixes (auto-import, suggested fixes)
+
+**Medium Priority (Significant Value):**
+- `get_call_hierarchy` - Function call graphs (incoming/outgoing calls)
+- `find_implementations` - Interface → concrete implementations
+- `inline_function` - Inline refactoring (reverse of extract_function)
+- `move_symbol` - Move classes/functions between files
+- `organize_imports` - Remove unused, sort imports
+
+**Low Priority (Polish):**
+- `get_signature_help` - Parameter hints for function calls
+- `get_type_hierarchy` - Inheritance tree navigation
+- `change_signature` - Update function signatures everywhere
+- `replace_in_buffer` - Simple text replacement wrapper
+
+**Out of Scope:**
+- File operations (write_file, delete_file) → Use shell
+- Text search (grep, search_text) → Use rg/grep
+- Git operations → Use git CLI
+- Test running → Use test runners directly
+- Code formatting → Use formatters via terminal
+- Build/deploy → Use build tools directly
+
+**Key principle**: Otter focuses on LSP/DAP-powered semantic operations. Shell/terminal handles everything else.
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for complete specifications, implementation notes, and estimated timelines.
+
 ### Note - `extract_function` Status
 
 **Based on agent testing (Test Report #9):**
@@ -15,6 +51,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `extract_function` is currently a stub (returns "Stub: extract_function")
 - API design looks reasonable but needs implementation
 - When implementing, consider: preview mode, variable scope analysis, return value inference, validation
+
+### Fixed - Critical Bugs from Agent Testing
+
+**Multiple critical bug fixes based on comprehensive agent testing:**
+
+- **Fixed `explain_symbol` crash**: Was calling non-existent `get_hover_info` method on `NeovimClient`. Now correctly uses `lsp_hover` and `lsp_references` methods directly.
+- **Fixed `summarize_changes` git path bug**: Git commands now use repository-relative paths instead of absolute paths. Resolves git root and makes paths relative before calling `git show`.
+- **Fixed path inconsistency in AI tools**: All AI service methods (`summarize_code`, `quick_review`, `summarize_changes`, `explain_error`) now use centralized path utilities (`resolve_workspace_path`) and accept both absolute and relative paths consistently with other tools.
+- **Fixed AIService initialization**: Now receives `project_path` parameter for proper path resolution.
+- **Fixed `rename_symbol` preview text**: Now shows actual code being replaced instead of placeholder `[symbol]` text. Reads file content to extract the exact text in the edit range.
+- **Improved `quick_review` line number extraction**: Enhanced LLM prompt to request explicit line numbers in format "(line XX)" and improved parsing with regex patterns to extract line numbers reliably.
+
+**Additional fixes:**
+- **Fixed `get_diagnostics` return format**: Was returning a bare list which caused MCP protocol serialization issues. Now returns `DiagnosticsResult` (wrapped object with `diagnostics` array, `total_count`, and `file` metadata) consistent with all other tools.
+
+**Other verified working correctly:**
+- `find_references`, `get_completions`, `get_symbols` return formats are correct
+- Path resolution for most tools is working as expected
 
 ### Fixed - `rename_symbol` Path Resolution
 
