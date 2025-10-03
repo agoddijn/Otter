@@ -2260,7 +2260,11 @@ end
         except Exception:
             return None
 
-    async def dap_get_session_status(self, session_id: str) -> Optional[Dict[str, Any]]:
+    async def dap_get_session_status(
+        self, 
+        session_id: str, 
+        max_output_lines: int = 50
+    ) -> Optional[Dict[str, Any]]:
         """Get current debug session status with accumulated output and PID.
         
         This queries the running DAP session for updated information including
@@ -2268,6 +2272,8 @@ end
         
         Args:
             session_id: Session ID to query
+            max_output_lines: Maximum lines of stdout/stderr to return (default 50, last N lines).
+                             Set to 0 for all output, -1 for no output.
             
         Returns:
             Dict with status, pid, output, etc. or None if session not found
@@ -2297,11 +2303,35 @@ end
         local status = 'terminated'  -- Default: assume terminated
         local active_session = dap.session()
         
-        if active_session and session_data.nvim_session_id and tostring(active_session.id) == session_data.nvim_session_id then
-            -- Session is still active in nvim-dap
-            status = 'running'
-            if active_session.stopped_thread_id then
-                status = 'paused'
+        -- 🔧 FIX: Check ANY active session, not just exact ID match
+        -- This handles cases like uvicorn reloader spawning child processes
+        if active_session then
+            -- If we have ANY active session, check if it's related to our process
+            local session_matches = session_data.nvim_session_id and tostring(active_session.id) == session_data.nvim_session_id
+            local has_our_pid = session_data.pid and active_session.pid == session_data.pid
+            
+            -- Consider it our session if either:
+            -- 1. Session ID matches (exact match)
+            -- 2. PID matches (reloader case where new session has same PID)
+            -- 3. No session_id stored yet (initial state)
+            if session_matches or has_our_pid or not session_data.nvim_session_id then
+                -- Update our tracked session ID if needed
+                if not session_data.nvim_session_id then
+                    session_data.nvim_session_id = tostring(active_session.id)
+                end
+                
+                -- Session is active
+                status = 'running'
+                if active_session.stopped_thread_id then
+                    status = 'paused'
+                    
+                    -- Try to get current position from stack trace
+                    -- Note: We don't fetch full stack frames here for performance
+                    -- The user can call get_stack_frames() separately if needed
+                    -- Just note that we're paused
+                    table.insert(session_data.diagnostic_info, 
+                        string.format("Currently paused at thread %s", tostring(active_session.stopped_thread_id)))
+                end
             end
         elseif session_data.terminated then
             status = 'terminated'
@@ -2330,12 +2360,63 @@ end
             end
         end
         
+        -- 🎯 Smart output limiting to prevent context explosion
+        local max_lines = {max_output_lines}
+        local stdout_lines = session_data.stdout or {{}}
+        local stderr_lines = session_data.stderr or {{}}
+        local total_stdout_lines = #stdout_lines
+        local total_stderr_lines = #stderr_lines
+        
+        local stdout_text = ""
+        local stderr_text = ""
+        local stdout_truncated = false
+        local stderr_truncated = false
+        
+        if max_lines == -1 then
+            -- No output
+            stdout_text = ""
+            stderr_text = ""
+        elseif max_lines == 0 then
+            -- All output
+            stdout_text = table.concat(stdout_lines, '')
+            stderr_text = table.concat(stderr_lines, '')
+        else
+            -- Last N lines
+            if total_stdout_lines > max_lines then
+                local start_idx = total_stdout_lines - max_lines + 1
+                local limited_stdout = {{}}
+                for i = start_idx, total_stdout_lines do
+                    table.insert(limited_stdout, stdout_lines[i])
+                end
+                stdout_text = table.concat(limited_stdout, '')
+                stdout_truncated = true
+            else
+                stdout_text = table.concat(stdout_lines, '')
+            end
+            
+            if total_stderr_lines > max_lines then
+                local start_idx = total_stderr_lines - max_lines + 1
+                local limited_stderr = {{}}
+                for i = start_idx, total_stderr_lines do
+                    table.insert(limited_stderr, stderr_lines[i])
+                end
+                stderr_text = table.concat(limited_stderr, '')
+                stderr_truncated = true
+            else
+                stderr_text = table.concat(stderr_lines, '')
+            end
+        end
+        
         return {{
             session_id = user_session_id,  -- Return the user-provided ID
             status = status,
             pid = session_data.pid,
-            stdout = table.concat(session_data.stdout or {{}}, ''),
-            stderr = table.concat(session_data.stderr or {{}}, ''),
+            stdout = stdout_text,
+            stderr = stderr_text,
+            stdout_lines_total = total_stdout_lines,  -- Track total for truncation awareness
+            stderr_lines_total = total_stderr_lines,
+            stdout_truncated = stdout_truncated,
+            stderr_truncated = stderr_truncated,
             exit_code = session_data.exit_code,
             terminated = session_data.terminated or false,
             uptime_seconds = uptime,

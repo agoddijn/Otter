@@ -472,12 +472,18 @@ class DebugService:
             for i, bp in enumerate(result)
         ]
 
-    async def get_session_info(self, session_id: Optional[str] = None) -> Optional[DebugSession]:
+    async def get_session_info(
+        self, 
+        session_id: Optional[str] = None,
+        max_output_lines: int = 50
+    ) -> Optional[DebugSession]:
         """Get debug session information (current or specific session by ID).
 
         Args:
             session_id: Optional session ID to query. If None, gets current active session.
                        If provided, can query any session (active or terminated).
+            max_output_lines: Maximum lines of stdout/stderr to return (default 50).
+                             Set to 0 for all output, -1 for no output.
 
         Returns:
             DebugSession if found, None otherwise
@@ -488,7 +494,7 @@ class DebugService:
         # If session_id provided, use get_session_status (can query any session)
         if session_id:
             try:
-                return await self.get_session_status(session_id)
+                return await self.get_session_status(session_id, max_output_lines)
             except Exception:
                 return None
 
@@ -537,7 +543,11 @@ class DebugService:
             else:
                 raise
 
-    async def get_session_status(self, session_id: str) -> DebugSession:
+    async def get_session_status(
+        self, 
+        session_id: str,
+        max_output_lines: int = 50
+    ) -> DebugSession:
         """Get current debug session status with updated output and PID.
         
         This fetches the latest session state including accumulated output
@@ -545,6 +555,8 @@ class DebugService:
         
         Args:
             session_id: Session ID to query
+            max_output_lines: Maximum lines of stdout/stderr to return (default 50, last N lines).
+                             Set to 0 for all output, -1 for no output at all.
             
         Returns:
             DebugSession with current status, PID, and accumulated output
@@ -559,7 +571,7 @@ class DebugService:
             raise RuntimeError(f"Session {session_id} not found")
         
         # Get current session state from Neovim
-        info = await self.nvim_client.dap_get_session_status(session_id)
+        info = await self.nvim_client.dap_get_session_status(session_id, max_output_lines)
         if not info:
             raise RuntimeError(f"Could not get status for session {session_id}")
         
@@ -579,6 +591,10 @@ class DebugService:
             output=combined_output,  # Combined for backwards compatibility
             stdout=stdout,  # Separate stdout
             stderr=stderr,  # Separate stderr
+            stdout_lines_total=info.get("stdout_lines_total", 0),
+            stderr_lines_total=info.get("stderr_lines_total", 0),
+            stdout_truncated=info.get("stdout_truncated", False),
+            stderr_truncated=info.get("stderr_truncated", False),
             pid=info.get("pid"),
             exit_code=info.get("exit_code"),
             terminated=info.get("terminated", False),

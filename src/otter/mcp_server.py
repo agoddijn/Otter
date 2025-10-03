@@ -966,21 +966,31 @@ async def set_breakpoints(
 
 
 @mcp.tool()
-async def get_debug_session_info(session_id: str | None = None) -> Dict[str, Any]:
+async def get_debug_session_info(
+    session_id: str | None = None,
+    max_output_lines: int = 50
+) -> Dict[str, Any]:
     """Get information about a debug session (current, past, or specific).
 
     Args:
         session_id: Optional session ID to query. If not provided, gets the currently
                    active session. If provided, can query terminated sessions (kept
                    for 5 minutes for crashes, 30 seconds for clean exits).
+        max_output_lines: Maximum lines of stdout/stderr to return (default: 50, last N lines).
+                         Set to 0 for ALL output (⚠️ may explode context!), -1 for NO output.
+                         Truncation is tracked via stdout_truncated/stderr_truncated fields.
 
     Returns:
         DebugSession with detailed information:
         - status: "running" | "paused" | "terminated" | "no_session"
         - session_id: UUID of the session
         - pid: Process ID (if running)
-        - stdout: Standard output from the process
+        - stdout: Standard output from the process (may be truncated!)
         - stderr: Standard error (separate from stdout!)
+        - stdout_lines_total: Total lines captured (for truncation awareness)
+        - stderr_lines_total: Total lines captured (for truncation awareness)
+        - stdout_truncated: True if stdout was truncated in this response
+        - stderr_truncated: True if stderr was truncated in this response
         - exit_code: Exit code (if terminated)
         - crash_reason: Human-readable reason for termination
         - uptime_seconds: How long the process ran
@@ -995,8 +1005,16 @@ async def get_debug_session_info(session_id: str | None = None) -> Dict[str, Any
           Useful for diagnosing unexpected debugger behavior!
 
     Examples:
-        # Get current session
+        # Get current session (last 50 lines of output)
         >>> info = get_debug_session_info()
+        
+        # Get minimal info (no output, just status)
+        >>> info = get_debug_session_info(max_output_lines=-1)
+        
+        # Get recent output (last 10 lines)
+        >>> info = get_debug_session_info(max_output_lines=10)
+        >>> if info["stdout_truncated"]:
+        >>>     print(f"Showing last 10 of {info['stdout_lines_total']} lines")
         
         # Query a specific session (even if terminated)
         >>> session = start_debug_session(file="app.py")
@@ -1014,7 +1032,7 @@ async def get_debug_session_info(session_id: str | None = None) -> Dict[str, Any
         # Crashed sessions persist for 5 minutes for diagnosis!
     """
     ide = await get_ide_server()
-    result = await ide.get_session_info(session_id)
+    result = await ide.get_session_info(session_id, max_output_lines)
     if result:
         return _to_dict(result)
     return {"status": "no_session"}

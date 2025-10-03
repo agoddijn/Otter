@@ -337,8 +337,12 @@ class DebugSession:
     current_line: Optional[int] = None
     current_file: Optional[str] = None
     output: str = ""  # Combined stdout+stderr (for backwards compatibility)
-    stdout: str = ""  # Standard output from the debugged process
-    stderr: str = ""  # Standard error from the debugged process
+    stdout: str = ""  # Standard output from the debugged process (may be truncated)
+    stderr: str = ""  # Standard error from the debugged process (may be truncated)
+    stdout_lines_total: int = 0  # Total lines of stdout captured (for truncation awareness)
+    stderr_lines_total: int = 0  # Total lines of stderr captured (for truncation awareness)
+    stdout_truncated: bool = False  # True if stdout was truncated in this response
+    stderr_truncated: bool = False  # True if stderr was truncated in this response
     pid: Optional[int] = None  # Process ID of the debugged process
     exit_code: Optional[int] = None  # Process exit code (None if still running)
     terminated: bool = False  # True if the process has terminated
