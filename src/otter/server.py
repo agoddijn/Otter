@@ -241,8 +241,8 @@ class CliIdeServer:
     ) -> List[BreakpointInfo]:
         return await self.debugging.set_breakpoints(file, lines, conditions)
 
-    async def get_session_info(self) -> Optional[DebugSession]:
-        return await self.debugging.get_session_info()
+    async def get_session_info(self, session_id: Optional[str] = None) -> Optional[DebugSession]:
+        return await self.debugging.get_session_info(session_id)
 
     # AI-Powered Analysis (Context Compression)
     async def summarize_code(

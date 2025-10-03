@@ -125,12 +125,16 @@ class DebugService:
         launch_cwd = cwd if cwd else str(self.project_path)
         
         # 🔋 CRITICAL: Resolve runtime using GENERIC resolver
+        # Create a resolver for the TARGET project (not Otter's project!)
+        # This ensures we use the correct venv/runtime for the project being debugged
+        target_resolver = RuntimeResolver(Path(launch_cwd))
+        
         # Works for Python, Node, Rust, Go, etc.
         # LSP and DAP use the EXACT SAME runtime!
         runtime_path = None
         if language in ["python", "javascript", "typescript", "rust", "go"]:
             try:
-                runtime = self.runtime_resolver.resolve_runtime(language, self.config)
+                runtime = target_resolver.resolve_runtime(language, self.config)
                 runtime_path = runtime.path
                 
                 # 📢 EXPLICIT: Log which runtime we're using
@@ -184,10 +188,15 @@ class DebugService:
                     f"   Configure it in .otter.toml or install it system-wide."
                 )
 
+        # 🎯 Generate session ID FIRST - Python is the source of truth
+        # This ID will be used to track the session in both Python and Lua
+        session_id = str(uuid4())
+        
         # Start debug session with breakpoints
         # ⚠️  CRITICAL: Breakpoints are now passed to dap_start_session
         # They will be set AFTER the adapter starts but BEFORE execution continues
         result = await self.nvim_client.dap_start_session(
+            session_id=session_id,  # 🔑 Pass our session ID to Lua
             filepath=str(file_path) if file_path else None,
             module=module,
             config_name=configuration,
@@ -218,10 +227,15 @@ class DebugService:
             error_msg = result.get("error") if result else "Unknown error"
             raise RuntimeError(f"Failed to start debug session: {error_msg}")
 
-        # Create session object
-        session_id = result.get("session_id", str(uuid4()))
+        # Session ID was generated above and passed to Lua
+        # Lua confirms it in the result
         config_name = result.get("config_name", configuration or "default")
 
+        # Separate stdout and stderr if available
+        stdout = result.get("stdout", "")
+        stderr = result.get("stderr", "")
+        combined_output = stdout + stderr if (stdout or stderr) else result.get("output", "")
+        
         session = DebugSession(
             session_id=session_id,
             status="running",
@@ -229,14 +243,20 @@ class DebugService:
             module=module,
             configuration=config_name,
             breakpoints=bp_infos,
-            output=result.get("output", ""),
+            output=combined_output,  # Combined for backwards compatibility
+            stdout=stdout,
+            stderr=stderr,
             pid=result.get("pid"),
+            exit_code=None,  # Session just started
+            terminated=False,
+            uptime_seconds=0.0,
+            crash_reason=None,
             launch_args=args,
             launch_env=env,
             launch_cwd=launch_cwd,
         )
 
-        # Track session
+        # Track session metadata
         self._active_sessions[session_id] = {
             "file": str(file_path) if file_path else None,
             "module": module,
@@ -464,21 +484,33 @@ class DebugService:
             for i, bp in enumerate(result)
         ]
 
-    async def get_session_info(self) -> Optional[DebugSession]:
-        """Get current debug session information.
+    async def get_session_info(self, session_id: Optional[str] = None) -> Optional[DebugSession]:
+        """Get debug session information (current or specific session by ID).
+
+        Args:
+            session_id: Optional session ID to query. If None, gets current active session.
+                       If provided, can query any session (active or terminated).
 
         Returns:
-            DebugSession if active, None otherwise
+            DebugSession if found, None otherwise
         """
         if not self.nvim_client:
             return None
 
+        # If session_id provided, use get_session_status (can query any session)
+        if session_id:
+            try:
+                return await self.get_session_status(session_id)
+            except Exception:
+                return None
+
+        # Otherwise, get the current active session
         info = await self.nvim_client.dap_get_session_info()
         if not info or info.get("status") == "stopped":
             return None
 
-        session_id = info.get("session_id", "unknown")
-        metadata = self._active_sessions.get(session_id, {})
+        found_session_id = info.get("session_id", "unknown")
+        metadata = self._active_sessions.get(found_session_id, {})
 
         # Get current stack frames to find current position
         frames = await self.nvim_client.dap_get_stack_frames()
@@ -545,14 +577,26 @@ class DebugService:
         
         metadata = self._active_sessions[session_id]
         
+        # Combine stdout and stderr for backwards compatibility
+        stdout = info.get("stdout", "")
+        stderr = info.get("stderr", "")
+        combined_output = stdout + stderr
+        
         return DebugSession(
             session_id=session_id,
             status=info.get("status", "unknown"),
             file=metadata.get("file"),
             module=metadata.get("module"),
             configuration=metadata.get("config", "unknown"),
-            output=info.get("output", ""),
+            output=combined_output,  # Combined for backwards compatibility
+            stdout=stdout,  # Separate stdout
+            stderr=stderr,  # Separate stderr
             pid=info.get("pid"),
+            exit_code=info.get("exit_code"),
+            terminated=info.get("terminated", False),
+            uptime_seconds=info.get("uptime_seconds"),
+            crash_reason=info.get("crash_reason"),
+            error=info.get("error"),  # Include any error messages
             launch_args=metadata.get("args"),
             launch_env=metadata.get("env"),
             launch_cwd=metadata.get("cwd"),

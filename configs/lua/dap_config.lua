@@ -12,24 +12,16 @@ local function get_config()
     }
 end
 
--- Helper to resolve Python path
+-- Helper to resolve Python path from adapter config
+-- ⚠️  CRITICAL: This should ONLY use the python_path from adapter_config
+-- Do NOT do auto-detection here - that's RuntimeResolver's job!
 local function get_python_path(adapter_config)
-    -- Use configured path if provided
     if adapter_config.python_path and vim.fn.executable(adapter_config.python_path) == 1 then
         return adapter_config.python_path
     end
     
-    -- Auto-detect venv
-    local cwd = vim.fn.getcwd()
-    local venv_patterns = { '/.venv/', '/venv/', '/env/', '/.env/' }
-    for _, pattern in ipairs(venv_patterns) do
-        local python_path = cwd .. pattern .. 'bin/python'
-        if vim.fn.executable(python_path) == 1 then
-            return python_path
-        end
-    end
-    
-    -- Fallback to system python
+    -- If no python_path configured, fall back to system Python
+    -- (This should rarely happen - RuntimeResolver should always provide a path)
     return 'python'
 end
 
@@ -51,7 +43,9 @@ function M.setup_python(adapter_config)
                 },
             })
         else
-            local python_path = get_python_path(adapter_config)
+            -- 🎯 Use python from CONFIG, not from adapter_config!
+            -- The config.pythonPath is set per-session by RuntimeResolver
+            local python_path = config.pythonPath or get_python_path(adapter_config)
             callback({
                 type = 'executable',
                 command = python_path,

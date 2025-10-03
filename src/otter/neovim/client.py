@@ -1451,6 +1451,7 @@ end
 
     async def dap_start_session(
         self,
+        session_id: str,  # 🔑 User-provided session ID (source of truth)
         filepath: Optional[str] = None,
         module: Optional[str] = None,
         config_name: Optional[str] = None,
@@ -1536,6 +1537,10 @@ end
         lua_code = f"""
         local dap = require('dap')
         local filetype = '{filetype}'
+        local user_session_id = '{session_id}'  -- 🔑 Session ID from Python
+        
+        -- Initialize session registry if needed
+        _G.otter_session_registry = _G.otter_session_registry or {{}}
         
         -- Check if DAP is configured for this filetype
         -- DAP should already be set up via dap_config.setup() during initialization
@@ -1576,13 +1581,12 @@ end
             config.cwd = {cwd_lua}
         end
         
-        -- 🎯 CRITICAL: If breakpoints are provided, ALWAYS stop on entry
-        -- This gives us time to set breakpoints before execution continues
-        local has_breakpoints = {breakpoint_lines_lua} ~= nil
-        config.stopOnEntry = {str(stop_on_entry).lower()} or has_breakpoints
+        config.stopOnEntry = {str(stop_on_entry).lower()}
         config.justMyCode = {str(just_my_code).lower()}
         
-        -- Language-specific runtime configuration
+        -- 🎯 CRITICAL: Set runtime path from RuntimeResolver
+        -- This is used by BOTH the DAP adapter AND the debugged program
+        -- Ensures unified runtime across LSP and DAP
         if filetype == 'python' then
             -- Python: Set Python interpreter path
             {f"config.pythonPath = '{lua_escape(runtime_path)}'" if runtime_path else "config.pythonPath = vim.fn.exepath('python')"}
@@ -1607,148 +1611,164 @@ end
         -- 'integratedTerminal' opens a separate terminal and doesn't send output events
         config.console = 'internalConsole'
         
-        -- 🎯 Set up event listeners to capture PID and output
-        -- Store in global namespace so we can access from listeners
-        _G.otter_dap_capture = _G.otter_dap_capture or {{}}
-        local capture_id = tostring(os.time() .. math.random(1000, 9999))
-        _G.otter_dap_capture[capture_id] = {{
+        -- 🎯 Initialize session data in the registry
+        -- Use the user-provided session_id as the key
+        _G.otter_session_registry[user_session_id] = {{
             pid = nil,
-            output = {{}},
+            stdout = {{}},
+            stderr = {{}},
+            exit_code = nil,
+            terminated = false,
+            start_time = os.time(),
+            nvim_session_id = nil,  -- Will be filled after dap.run()
         }}
         
-        local capture = _G.otter_dap_capture[capture_id]
+        local session_data = _G.otter_session_registry[user_session_id]
         
-        -- Listener for process event (contains real PID)
-        local process_listener_name = 'otter_process_' .. capture_id
-        dap.listeners.after.event_process[process_listener_name] = function(session, body)
+        -- Set up event listeners keyed by user session ID
+        local process_listener = 'otter_process_' .. user_session_id
+        dap.listeners.after.event_process[process_listener] = function(session, body)
             if body and body.systemProcessId then
-                capture.pid = body.systemProcessId
+                session_data.pid = body.systemProcessId
             end
         end
         
-        -- Listener for output events (stdout/stderr)
-        local output_listener_name = 'otter_output_' .. capture_id
-        dap.listeners.after.event_output[output_listener_name] = function(session, body)
+        local output_listener = 'otter_output_' .. user_session_id
+        dap.listeners.after.event_output[output_listener] = function(session, body)
             if body and body.output then
-                table.insert(capture.output, body.output)
+                local category = body.category or 'stdout'
+                if category == 'stderr' then
+                    table.insert(session_data.stderr, body.output)
+                else
+                    table.insert(session_data.stdout, body.output)
+                end
             end
         end
         
-        -- Start debugging (will stop on entry if breakpoints provided)
+        local exited_listener = 'otter_exited_' .. user_session_id
+        dap.listeners.after.event_exited[exited_listener] = function(session, body)
+            if body and body.exitCode ~= nil then
+                session_data.exit_code = body.exitCode
+            end
+        end
+        
+        local terminated_listener = 'otter_terminated_' .. user_session_id
+        dap.listeners.after.event_terminated[terminated_listener] = function(session, body)
+            session_data.terminated = true
+            session_data.termination_time = os.time()
+            
+            -- Clean up listeners after termination
+            dap.listeners.after.event_process[process_listener] = nil
+            dap.listeners.after.event_output[output_listener] = nil
+            dap.listeners.after.event_exited[exited_listener] = nil
+            dap.listeners.after.event_terminated[terminated_listener] = nil
+            
+            -- 🎯 Smart retention: Keep crashes longer than clean exits
+            local retention_ms
+            if session_data.exit_code and session_data.exit_code ~= 0 then
+                -- Crash or error exit: keep for 5 minutes (need time to diagnose)
+                retention_ms = 300000  -- 5 minutes
+            else
+                -- Clean exit (code 0) or unknown: keep for 30 seconds
+                retention_ms = 30000   -- 30 seconds
+            end
+            
+            vim.defer_fn(function()
+                _G.otter_session_registry[user_session_id] = nil
+            end, retention_ms)
+        end
+        
+        -- 🎯 CORRECT WORKFLOW: Stop on entry, set breakpoints via DAP protocol, then continue
+        local breakpoint_lines = {breakpoint_lines_lua}
+        local filepath_for_bp = {filepath_lua}
+        local has_breakpoints = breakpoint_lines ~= nil and filepath_for_bp ~= nil
+        
+        -- If we have breakpoints, ALWAYS stop on entry so we can set them before execution
+        if has_breakpoints then
+            config.stopOnEntry = true
+        end
+        
+        -- Start debugging (will stop on entry if we have breakpoints)
         dap.run(config)
         
-        -- 🎯 CRITICAL FIX: Set breakpoints AFTER starting but BEFORE continuing
-        -- The session is stopped on entry, giving us time to set breakpoints
-        local breakpoint_lines = {breakpoint_lines_lua}
-        local should_auto_continue = breakpoint_lines and not {str(stop_on_entry).lower()}
-        
-        if breakpoint_lines and {filepath_lua} then
-            -- Wait for session to be stopped on entry
-            vim.wait(500, function()
-                local session = dap.session()
+        -- If we have breakpoints, set them via DAP protocol NOW (while stopped on entry)
+        if has_breakpoints then
+            -- Wait for session to be initialized and stopped on entry
+            local session = nil
+            local waited = vim.wait(3000, function()
+                session = dap.session()
                 return session and session.stopped_thread_id ~= nil
-            end)
+            end, 50)
             
-            -- Open the file buffer
-            vim.cmd('edit ' .. {filepath_lua})
-            local bufnr = vim.fn.bufnr({filepath_lua})
-            
-            -- Set breakpoints using dap.set_breakpoints (sends to adapter!)
-            local breakpoints_to_set = {{}}
-            for _, line in ipairs(breakpoint_lines) do
-                table.insert(breakpoints_to_set, {{ line = line }})
+            if not waited or not session then
+                return {{error = 'Session did not stop on entry'}}
             end
             
-            dap.set_breakpoints(bufnr, breakpoints_to_set)
+            -- Build breakpoints for DAP setBreakpoints request
+            local bp_list = {{}}
+            for _, line in ipairs(breakpoint_lines) do
+                table.insert(bp_list, {{line = line}})
+            end
             
-            -- If user didn't request stop_on_entry, continue execution
+            -- Send setBreakpoints request directly via DAP protocol
+            -- This is the ONLY way to ensure breakpoints are actually sent to debugpy
+            local err, bp_response = session:request('setBreakpoints', {{
+                source = {{path = {filepath_lua}}},
+                breakpoints = bp_list,
+            }})
+            
+            if err then
+                return {{error = 'Failed to set breakpoints: ' .. tostring(err)}}
+            end
+            
+            -- If user didn't explicitly request stopOnEntry, continue execution
             -- (we only stopped to set breakpoints)
-            if should_auto_continue then
-                vim.wait(100)  -- Give breakpoints time to register
+            if not {str(stop_on_entry).lower()} then
+                -- CRITICAL: Wait for breakpoints to be fully registered before continuing
+                -- Using vim.wait synchronously to ensure breakpoints are ready
+                vim.wait(500)  -- Give debugpy time to process breakpoints
                 dap.continue()
             end
         end
         
         -- Wait for session to initialize AND process to start
-        -- We need both the session and the real PID
         local session = nil
         local wait_result = vim.wait(3000, function()
             session = dap.session()
-            return session ~= nil and capture.pid ~= nil
+            return session ~= nil and session_data.pid ~= nil
         end, 100)  -- Check every 100ms
         
-        -- Clean up listeners
-        dap.listeners.after.event_process[process_listener_name] = nil
-        dap.listeners.after.event_output[output_listener_name] = nil
-        
         if session then
-            -- Get captured data
-            local pid = capture.pid
-            local output = table.concat(capture.output, '')
+            -- Store the nvim session ID in our registry for cross-referencing
+            session_data.nvim_session_id = tostring(session.id)
             
-            -- 🎯 CRITICAL: Transfer initial capture to persistent storage
-            -- This ensures get_session_status can access the PID/output captured during startup
-            _G.otter_dap_persistent_output = _G.otter_dap_persistent_output or {{}}
-            local session_key = tostring(session.id)
-            _G.otter_dap_persistent_output[session_key] = {{
-                pid = pid,
-                output = capture.output,  -- Keep as array for appending
-            }}
-            
-            -- Set up persistent listeners for future output
-            local process_listener_name = 'otter_persistent_process_' .. session_key
-            dap.listeners.after.event_process[process_listener_name] = function(s, body)
-                local session_data = _G.otter_dap_persistent_output[session_key]
-                if body and body.systemProcessId and session_data then
-                    session_data.pid = body.systemProcessId
-                end
-            end
-            
-            local output_listener_name = 'otter_persistent_output_' .. session_key
-            dap.listeners.after.event_output[output_listener_name] = function(s, body)
-                local session_data = _G.otter_dap_persistent_output[session_key]
-                if body and body.output and session_data and session_data.output then
-                    table.insert(session_data.output, body.output)
-                end
-            end
-            
-            -- Clean up listeners when session terminates
-            local terminated_listener_name = 'otter_persistent_cleanup_' .. session_key
-            dap.listeners.after.event_terminated[terminated_listener_name] = function(s, body)
-                dap.listeners.after.event_process[process_listener_name] = nil
-                dap.listeners.after.event_output[output_listener_name] = nil
-                dap.listeners.after.event_terminated[terminated_listener_name] = nil
-                -- Keep the data around briefly so final status can be retrieved
-                vim.defer_fn(function()
-                    _G.otter_dap_persistent_output[session_key] = nil
-                end, 5000)
-            end
-            
-            -- Clean up temporary capture
-            _G.otter_dap_capture[capture_id] = nil
+            -- Get current data from registry
+            local stdout = table.concat(session_data.stdout or {{}}, '')
+            local stderr = table.concat(session_data.stderr or {{}}, '')
+            local output = stdout .. stderr
             
             -- If we didn't get a PID within timeout, that's suspicious but not fatal
-            -- The process might be slow to start
-            if not pid then
+            if not session_data.pid then
                 -- Fallback: try to get debugpy's PID at least
                 if session.client and session.client.server and session.client.server.pid then
-                    pid = session.client.server.pid
+                    session_data.pid = session.client.server.pid
                 end
             end
             
             return {{
-                session_id = tostring(session.id or 'unknown'),
+                session_id = user_session_id,  -- User-provided ID (source of truth)
                 config_name = 'Otter Debug Session',
                 file = {filepath_lua},
                 module = {module_lua},
                 status = 'running',
-                pid = pid,
+                pid = session_data.pid,
                 output = output,
-                _capture_id = capture_id,  -- For potential future use
+                stdout = stdout,
+                stderr = stderr,
             }}
         else
-            -- Clean up global capture on failure
-            _G.otter_dap_capture[capture_id] = nil
+            -- Clean up on failure
+            _G.otter_session_registry[user_session_id] = nil
             
             return {{ error = 'Failed to start debug session (timeout waiting for process)' }}
         end
@@ -1955,29 +1975,52 @@ end
         local session = dap.session()
         
         if not session then
-            return nil
+            return {error = 'No active debug session'}
         end
         
-        -- Get current thread
-        local thread_id = session.current_thread_id
+        -- CRITICAL: Check if session is actually stopped at a breakpoint
+        -- If stopped_thread_id is nil, the program is not paused at a breakpoint
+        local thread_id = session.stopped_thread_id
         if not thread_id then
-            return nil
+            -- Try current_thread_id as fallback
+            thread_id = session.current_thread_id
+            if not thread_id then
+                return {error = 'No stopped thread (program may have completed or not hit breakpoint)'}
+            end
         end
         
-        -- Request stack trace
-        local result = {}
+        -- Use callback-based request (nvim-dap's API is async)
+        local result_frames = nil
+        local request_err = nil
+        
         session:request('stackTrace', {threadId = thread_id}, function(err, response)
-            if not err and response then
-                result = response.stackFrames or {}
+            if err then
+                request_err = err
+            elseif response and response.stackFrames then
+                result_frames = response.stackFrames
             end
         end)
         
-        -- Wait for response
-        vim.wait(500)
+        -- Wait for the async callback to complete
+        local success = vim.wait(1000, function()
+            return result_frames ~= nil or request_err ~= nil
+        end, 10)
+        
+        if not success then
+            return {error = 'Stack trace request timed out'}
+        end
+        
+        if request_err then
+            return {error = 'Stack trace request failed: ' .. vim.inspect(request_err)}
+        end
+        
+        if not result_frames then
+            return {error = 'No stack frames in response'}
+        end
         
         -- Convert to our format
         local frames = {}
-        for _, frame in ipairs(result) do
+        for _, frame in ipairs(result_frames) do
             table.insert(frames, {
                 id = frame.id,
                 name = frame.name,
@@ -1992,7 +2035,13 @@ end
 
         try:
             result = await self.execute_lua(lua_code)
-            return result if result else []
+            if not result:
+                return []
+            # Check if result contains an error
+            if isinstance(result, dict) and 'error' in result:
+                # Silently return empty list - session may have ended
+                return []
+            return result
         except Exception:
             return []
 
@@ -2186,59 +2235,74 @@ end
         Returns:
             Dict with status, pid, output, etc. or None if session not found
         """
-        # The session_id parameter is provided but we need to handle both active and terminated sessions
+        # Look up session directly by the provided session_id
         lua_code = f"""
         local dap = require('dap')
-        _G.otter_dap_persistent_output = _G.otter_dap_persistent_output or {{}}
+        local user_session_id = '{session_id}'
+        _G.otter_session_registry = _G.otter_session_registry or {{}}
         
-        -- First, try to get the active session
-        local session = dap.session()
-        local session_key = nil
-        local status = 'stopped'
-        
-        if session and session.id then
-            session_key = tostring(session.id)
-            status = 'running'
-            if session.stopped_thread_id then
-                status = 'paused'
-            end
-        else
-            -- Session has terminated, but we might still have cached data
-            -- Try all cached sessions (there should only be 1-2 at most)
-            for key, _ in pairs(_G.otter_dap_persistent_output) do
-                session_key = key
-                status = 'stopped'
-                break
-            end
-        end
-        
-        if not session_key then
-            return {{
-                status = 'stopped',
-                error = 'No session found (active or cached)',
-                output = '',
-                pid = nil,
-            }}
-        end
-        
-        -- Retrieve persistent output
-        local session_data = _G.otter_dap_persistent_output[session_key]
+        -- Look up the session data by the user-provided ID
+        local session_data = _G.otter_session_registry[user_session_id]
         
         if not session_data then
             return {{
-                session_id = session_key,
-                status = status,
+                status = 'no_session',
+                error = string.format('Session "%s" not found. It may have been cleaned up (crashes kept for 5 minutes, clean exits for 30 seconds).', user_session_id),
+                stdout = '',
+                stderr = '',
                 pid = nil,
-                output = '',
-                error = 'Session data not found',
+                exit_code = nil,
+                terminated = true,
             }}
         end
         
+        -- Determine status by checking if the nvim session is still active
+        local status = 'terminated'  -- Default: assume terminated
+        local active_session = dap.session()
+        
+        if active_session and session_data.nvim_session_id and tostring(active_session.id) == session_data.nvim_session_id then
+            -- Session is still active in nvim-dap
+            status = 'running'
+            if active_session.stopped_thread_id then
+                status = 'paused'
+            end
+        elseif session_data.terminated then
+            status = 'terminated'
+        elseif session_data.exit_code ~= nil then
+            status = 'exited'
+        end
+        
+        -- Calculate uptime and crash reason
+        local uptime = nil
+        local crash_reason = nil
+        
+        if session_data.start_time then
+            uptime = os.time() - session_data.start_time
+        end
+        
+        if session_data.terminated or status == 'terminated' then
+            local exit_code = session_data.exit_code
+            if exit_code and exit_code ~= 0 then
+                crash_reason = string.format('Process exited with code %d', exit_code)
+            elseif uptime and uptime < 2 then
+                crash_reason = 'Process terminated during startup'
+            elseif exit_code == 0 then
+                crash_reason = 'Process exited cleanly (code 0)'
+            else
+                crash_reason = 'Process terminated unexpectedly'
+            end
+        end
+        
         return {{
-            session_id = session_key,
+            session_id = user_session_id,  -- Return the user-provided ID
             status = status,
             pid = session_data.pid,
-            output = table.concat(session_data.output or {{}}, ''),
+            stdout = table.concat(session_data.stdout or {{}}, ''),
+            stderr = table.concat(session_data.stderr or {{}}, ''),
+            exit_code = session_data.exit_code,
+            terminated = session_data.terminated or false,
+            uptime_seconds = uptime,
+            crash_reason = crash_reason,
         }}
         """
 

@@ -329,15 +329,22 @@ class ExecutionState:
 @dataclass
 class DebugSession:
     session_id: str
-    status: Literal["running", "paused", "stopped", "exited"]
+    status: Literal["running", "paused", "stopped", "terminated", "no_session", "exited"]
     file: Optional[str] = None  # File being debugged (None for module launches)
     module: Optional[str] = None  # Module being debugged (e.g., "uvicorn")
     configuration: Optional[str] = None  # Name of the debug configuration used
     breakpoints: List[BreakpointInfo] = field(default_factory=list)
     current_line: Optional[int] = None
     current_file: Optional[str] = None
-    output: str = ""  # Recent stdout/stderr from the debugged process
+    output: str = ""  # Combined stdout+stderr (for backwards compatibility)
+    stdout: str = ""  # Standard output from the debugged process
+    stderr: str = ""  # Standard error from the debugged process
     pid: Optional[int] = None  # Process ID of the debugged process
+    exit_code: Optional[int] = None  # Process exit code (None if still running)
+    terminated: bool = False  # True if the process has terminated
+    uptime_seconds: Optional[float] = None  # How long the process has been running
+    crash_reason: Optional[str] = None  # Human-readable reason for crash/termination
+    error: Optional[str] = None  # Error message if session lookup failed
     launch_args: Optional[List[str]] = None  # Command-line arguments used
     launch_env: Optional[Dict[str, str]] = None  # Environment variables used
     launch_cwd: Optional[str] = None  # Working directory used

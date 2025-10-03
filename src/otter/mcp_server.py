@@ -823,8 +823,11 @@ async def start_debug_session(
         args: Optional command-line arguments for the program
         env: Optional environment variables to set for the debug session
              Example: {"DOPPLER_ENV": "1", "DEBUG": "true"}
-        cwd: Optional working directory for the debug session
-             Defaults to project root if not specified
+        cwd: Optional working directory for the debug session.
+             Defaults to project root if not specified.
+             ⚠️  IMPORTANT: Runtime (Python/Node/etc) is auto-detected from this directory!
+             The debugger will use the venv/runtime found in the cwd, ensuring LSP and
+             DAP use the same runtime for consistency.
         stop_on_entry: Whether to stop at the first line of the program (default: False)
         just_my_code: Whether to debug only user code, skipping library code (default: True)
 
@@ -836,10 +839,11 @@ async def start_debug_session(
         Debug a Python file with breakpoints:
         {"file": "src/main.py", "breakpoints": [10, 25, 42]}
 
-        Debug uvicorn server with environment variables:
+        Debug uvicorn server in a different project (uses that project's venv!):
         {
             "module": "uvicorn",
             "args": ["fern_mono.main:app", "--host", "127.0.0.1", "--port", "8000", "--reload"],
+            "cwd": "/Users/agoddijn/fern-folder/fern-mono",
             "env": {"DOPPLER_ENV": "1"}
         }
 
@@ -961,18 +965,43 @@ async def set_breakpoints(
 
 
 @mcp.tool()
-async def get_debug_session_info() -> Dict[str, Any]:
-    """Get information about the current debug session.
+async def get_debug_session_info(session_id: str | None = None) -> Dict[str, Any]:
+    """Get information about a debug session (current, past, or specific).
+
+    Args:
+        session_id: Optional session ID to query. If not provided, gets the currently
+                   active session. If provided, can query terminated sessions (kept
+                   for 5 minutes for crashes, 30 seconds for clean exits).
 
     Returns:
-        DebugSession if active, or {"status": "no_session"} if not debugging
+        DebugSession with detailed information:
+        - status: "running" | "paused" | "terminated" | "no_session"
+        - session_id: UUID of the session
+        - pid: Process ID (if running)
+        - stdout: Standard output from the process
+        - stderr: Standard error (separate from stdout!)
+        - exit_code: Exit code (if terminated)
+        - crash_reason: Human-readable reason for termination
+        - uptime_seconds: How long the process ran
+        - launch_args: Command-line arguments used
+        - launch_env: Environment variables used
+        - launch_cwd: Working directory used
 
-    Example:
-        Check if debugging is active and get current state:
-        {}
+    Examples:
+        # Get current session
+        >>> info = get_debug_session_info()
+        
+        # Query a specific session (even if terminated)
+        >>> session = start_debug_session(file="app.py")
+        >>> # Program crashes...
+        >>> info = get_debug_session_info(session_id=session["session_id"])
+        >>> print(info["stderr"])  # See crash details
+        >>> print(info["crash_reason"])  # "Process exited with code 1"
+        
+        # Crashed sessions persist for 5 minutes for diagnosis!
     """
     ide = await get_ide_server()
-    result = await ide.get_session_info()
+    result = await ide.get_session_info(session_id)
     if result:
         return _to_dict(result)
     return {"status": "no_session"}
