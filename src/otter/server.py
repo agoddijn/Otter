@@ -211,12 +211,11 @@ class CliIdeServer:
         breakpoints: Optional[List[int]] = None,
         args: Optional[List[str]] = None,
         env: Optional[Dict[str, str]] = None,
-        cwd: Optional[str] = None,
         stop_on_entry: bool = False,
         just_my_code: bool = True,
     ) -> DebugSession:
         return await self.debugging.start_debug_session(
-            file, module, configuration, breakpoints, args, env, cwd, stop_on_entry, just_my_code
+            file, module, configuration, breakpoints, args, env, stop_on_entry, just_my_code
         )
 
     async def control_execution(

@@ -72,22 +72,22 @@ class RuntimeResolver:
             return runtime
         
         # Not found
-        display_name = spec.get("display_name", language)
+        display_name = spec.display_name
         raise RuntimeError(
             f"{display_name} runtime not found.\n\n"
             f"Tried:\n"
             f"  1. Explicit config in .otter.toml\n"
             f"  2. Auto-detection in project\n"
-            f"  3. System {spec['executable_name']}\n\n"
+            f"  3. System {spec.executable_name}\n\n"
             f"Please install {display_name} or configure it in .otter.toml:\n"
             f"  [lsp.{language}]\n"
-            f"  {spec['config_key']} = \"/path/to/{spec['executable_name']}\""
+            f"  {spec.config_key} = \"/path/to/{spec.executable_name}\""
         )
     
     def _check_explicit_config(
         self,
         language: str,
-        spec: Dict[str, Any],
+        spec: RuntimeSpec,
         config: Any,
     ) -> Optional[RuntimeInfo]:
         """Check explicit configuration."""
@@ -184,11 +184,17 @@ class RuntimeResolver:
             exe_path = venv_path / rule.executable_path
             if exe_path.exists():
                 version = self._get_version(str(exe_path), spec)
+                original_path = str(exe_path)
+                resolved_path = str(exe_path.resolve())
+                is_symlink = exe_path.is_symlink()
+                
                 return RuntimeInfo(
                     language=language,
-                    path=str(exe_path.resolve()),
+                    path=resolved_path,
                     source=f"auto_detect_{rule_type}",
                     version=version,
+                    original_path=original_path if is_symlink else None,
+                    is_symlink=is_symlink,
                 )
             
             # Try Windows path
@@ -196,11 +202,17 @@ class RuntimeResolver:
                 exe_path_win = venv_path / rule.executable_path_win
                 if exe_path_win.exists():
                     version = self._get_version(str(exe_path_win), spec)
+                    original_path = str(exe_path_win)
+                    resolved_path = str(exe_path_win.resolve())
+                    is_symlink = exe_path_win.is_symlink()
+                    
                     return RuntimeInfo(
                         language=language,
-                        path=str(exe_path_win.resolve()),
+                        path=resolved_path,
                         source=f"auto_detect_{rule_type}",
                         version=version,
+                        original_path=original_path if is_symlink else None,
+                        is_symlink=is_symlink,
                     )
         
         return None

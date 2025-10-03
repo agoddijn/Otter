@@ -114,7 +114,7 @@ async def test_multiple_breakpoints(debug_service):
     
     # Wait for first breakpoint (line 4)
     await asyncio.sleep(0.5)
-    state1 = await service.inspect_state(session.session_id)
+    state1 = await service.get_session_status(session.session_id)
     
     assert state1.status == "paused", "Should pause at first breakpoint"
     assert state1.current_line == 4, f"Should be at line 4, got: {state1.current_line}"
@@ -123,7 +123,7 @@ async def test_multiple_breakpoints(debug_service):
     # Continue to next breakpoint (line 6)
     await service.control_execution("continue", session.session_id)
     await asyncio.sleep(0.5)
-    state2 = await service.inspect_state(session.session_id)
+    state2 = await service.get_session_status(session.session_id)
     
     assert state2.status == "paused", "Should pause at second breakpoint"
     assert state2.current_line == 6, f"Should be at line 6, got: {state2.current_line}"
@@ -131,7 +131,7 @@ async def test_multiple_breakpoints(debug_service):
     # Continue to next breakpoint (line 8)
     await service.control_execution("continue", session.session_id)
     await asyncio.sleep(0.5)
-    state3 = await service.inspect_state(session.session_id)
+    state3 = await service.get_session_status(session.session_id)
     
     assert state3.status == "paused", "Should pause at third breakpoint"
     assert state3.current_line == 8, f"Should be at line 8, got: {state3.current_line}"
@@ -152,16 +152,19 @@ async def test_can_inspect_variables_at_breakpoint(debug_service):
     # Wait for breakpoint
     await asyncio.sleep(1.0)
     
-    state = await service.inspect_state(session.session_id)
+    session_status = await service.get_session_status(session.session_id)
     
     # Should be paused
-    assert state.status == "paused"
-    assert state.current_line == 6
+    assert session_status.status == "paused"
+    assert session_status.current_line == 6
+    
+    # Now inspect variables
+    state = await service.inspect_state()
     
     # Should be able to see variables x and y
-    assert len(state.scopes) > 0, "Should have at least one scope (locals)"
+    assert len(state.get("scopes", [])) > 0, "Should have at least one scope (locals)"
     
-    local_scope = next((s for s in state.scopes if s.name.lower() == "locals"), None)
+    local_scope = next((s for s in state["scopes"] if s.name.lower() == "locals"), None)
     assert local_scope is not None, "Should have a 'Locals' scope"
     
     # Should be able to get variables from the scope
@@ -195,11 +198,10 @@ async def test_stop_on_entry(debug_service):
     # Give it a moment to settle
     await asyncio.sleep(0.5)
     
-    state = await service.inspect_state(session.session_id)
+    state = await service.get_session_status(session.session_id)
     
     assert state.status == "paused", "Should be paused on entry"
     assert state.current_line is not None, "Should have a current line"
-    assert len(state.stack_frames) > 0, "Should have stack frames"
     
     # Should be at first line with actual code (line 2: x = 1)
     assert state.current_line in [2, 3], f"Should be at start of file, got line {state.current_line}"
@@ -217,7 +219,7 @@ async def test_step_over(debug_service):
     )
     
     await asyncio.sleep(0.5)
-    state1 = await service.inspect_state(session.session_id)
+    state1 = await service.get_session_status(session.session_id)
     
     line1 = state1.current_line
     assert line1 is not None, "Should have starting line"
@@ -226,7 +228,7 @@ async def test_step_over(debug_service):
     await service.control_execution("step_over", session.session_id)
     await asyncio.sleep(0.5)
     
-    state2 = await service.inspect_state(session.session_id)
+    state2 = await service.get_session_status(session.session_id)
     
     assert state2.status == "paused", "Should still be paused after step"
     assert state2.current_line is not None, "Should have current line after step"
@@ -253,7 +255,7 @@ async def test_breakpoint_without_stop_on_entry(debug_service):
     await asyncio.sleep(1.0)
     
     # Should now be paused at the breakpoint
-    state = await service.inspect_state(session.session_id)
+    state = await service.get_session_status(session.session_id)
     
     # These are the critical assertions for normal debugging workflow
     assert state.status == "paused", f"Expected paused, got: {state.status}"
@@ -276,7 +278,7 @@ async def test_evaluate_expression_at_breakpoint(debug_service):
     
     await asyncio.sleep(1.0)
     
-    state = await service.inspect_state(session.session_id)
+    state = await service.get_session_status(session.session_id)
     assert state.status == "paused"
     
     # Evaluate expression

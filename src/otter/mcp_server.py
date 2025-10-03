@@ -169,6 +169,10 @@ def _to_dict(obj: Any) -> Any:
 #     summarize_changes    - Summarize uncommitted git changes
 #     explain_error        - AI explanation of error messages
 #
+# 🔧 CONFIGURATION
+#     get_otter_config     - See current project and detected runtimes
+#     get_runtime_info     - Preview runtimes for other projects
+#
 # ============================================================================
 # CORE CONCEPTS
 # ============================================================================
@@ -801,7 +805,6 @@ async def start_debug_session(
     breakpoints: List[int] | None = None,
     args: List[str] | None = None,
     env: Dict[str, str] | None = None,
-    cwd: str | None = None,
     stop_on_entry: bool = False,
     just_my_code: bool = True,
 ) -> Dict[str, Any]:
@@ -823,13 +826,13 @@ async def start_debug_session(
         args: Optional command-line arguments for the program
         env: Optional environment variables to set for the debug session
              Example: {"DOPPLER_ENV": "1", "DEBUG": "true"}
-        cwd: Optional working directory for the debug session.
-             Defaults to project root if not specified.
-             ⚠️  IMPORTANT: Runtime (Python/Node/etc) is auto-detected from this directory!
-             The debugger will use the venv/runtime found in the cwd, ensuring LSP and
-             DAP use the same runtime for consistency.
         stop_on_entry: Whether to stop at the first line of the program (default: False)
         just_my_code: Whether to debug only user code, skipping library code (default: True)
+        
+    Note:
+        The debugger runs in Otter's current project (same as LSP, file operations, etc).
+        Runtime (Python/Node/etc) is auto-detected from the project's venv.
+        To debug a different project, start a separate Otter instance for that project.
 
     Returns:
         DebugSession with session_id, status, file/module, configuration, breakpoints,
@@ -839,19 +842,17 @@ async def start_debug_session(
         Debug a Python file with breakpoints:
         {"file": "src/main.py", "breakpoints": [10, 25, 42]}
 
-        Debug uvicorn server in a different project (uses that project's venv!):
+        Debug uvicorn server with environment variables:
         {
             "module": "uvicorn",
-            "args": ["fern_mono.main:app", "--host", "127.0.0.1", "--port", "8000", "--reload"],
-            "cwd": "/Users/agoddijn/fern-folder/fern-mono",
+            "args": ["app.main:app", "--host", "127.0.0.1", "--port", "8000", "--reload"],
             "env": {"DOPPLER_ENV": "1"}
         }
 
-        Debug pytest with specific working directory:
+        Debug pytest tests:
         {
             "module": "pytest",
-            "args": ["tests/test_app.py", "-v"],
-            "cwd": "/path/to/project"
+            "args": ["tests/test_app.py", "-v"]
         }
 
         Debug with configuration:
@@ -859,7 +860,7 @@ async def start_debug_session(
     """
     ide = await get_ide_server()
     result = await ide.start_debug_session(
-        file, module, configuration, breakpoints, args, env, cwd, stop_on_entry, just_my_code
+        file, module, configuration, breakpoints, args, env, stop_on_entry, just_my_code
     )
     return _to_dict(result)
 
@@ -1656,6 +1657,227 @@ You'll know things worked when:
 **Verify discard:** get_buffer_diff() (should be has_changes=false)
 **Check buffer state:** get_buffer_info()
 """
+
+
+# ============================================================================
+# Configuration & Runtime Management
+# ============================================================================
+
+
+@mcp.tool()
+async def get_otter_config() -> Dict[str, Any]:
+    """Get Otter's current configuration and runtime detection info.
+    
+    Shows the current project's configuration including:
+    - Project path that Otter is operating on
+    - Detected runtimes (Python, Node, Rust, Go) for THIS project
+    - Configuration from .otter.toml (if present)
+    - LSP and DAP status
+    
+    ⚠️  NOTE: All Otter tools (LSP, DAP, file operations) operate on this same project.
+    To work on a different project, start a separate Otter instance for it.
+    Use get_runtime_info() to check runtimes for other projects (read-only).
+    
+    Returns:
+        Configuration including:
+        - project_path: Current project Otter is configured for
+        - project_name: Name of the project directory
+        - config_file: Path to .otter.toml (if exists)
+        - runtimes: Detected runtimes for THIS project
+          - path: Resolved path to runtime executable
+          - version: Version string
+          - source: How it was detected (venv, system, etc.)
+          - is_symlink: True if the runtime is a symlink (e.g., UV venvs)
+          - symlink_path: Original symlink path (e.g., .venv/bin/python)
+          - resolved_path: Where the symlink points to
+        - lsp_enabled: Whether LSP is enabled
+        - dap_enabled: Whether DAP is enabled
+    
+    Examples:
+        # Check what project Otter is working on
+        >>> config = get_otter_config()
+        >>> print(f"Working on: {config['project_name']}")
+        >>> print(f"Python: {config['runtimes']['python']['path']}")
+        
+        # Check if Python is a symlink (e.g., UV venv)
+        >>> python = config['runtimes']['python']
+        >>> if python.get('is_symlink'):
+        ...     print(f"Using venv: {python['symlink_path']}")
+        ...     print(f"Points to: {python['resolved_path']}")
+        "Using venv: /path/to/project/.venv/bin/python"
+        "Points to: /path/to/uv/python/cpython-.../python3.12"
+        
+        # Verify configuration before starting work
+        >>> config = get_otter_config()
+        >>> if not config['runtimes']['python']['available']:
+        ...     print("Warning: No Python runtime detected!")
+    """
+    from otter.runtime import RuntimeResolver
+    from otter.config import load_config
+    
+    project_path = get_project_path()
+    config = load_config(Path(project_path))
+    
+    # Check if .otter.toml exists
+    config_file = Path(project_path) / ".otter.toml"
+    has_config_file = config_file.exists()
+    
+    # Detect runtimes for this project
+    resolver = RuntimeResolver(Path(project_path))
+    runtimes = {}
+    
+    for language in ["python", "javascript", "typescript", "rust", "go"]:
+        try:
+            runtime = resolver.resolve_runtime(language, config)
+            runtime_dict = {
+                "path": str(runtime.path),
+                "version": runtime.version,
+                "source": runtime.source,
+                "available": True,
+            }
+            
+            # Add symlink info for transparency
+            if runtime.is_symlink and runtime.original_path:
+                runtime_dict["is_symlink"] = True
+                runtime_dict["symlink_path"] = runtime.original_path
+                runtime_dict["resolved_path"] = runtime.path
+            
+            runtimes[language] = runtime_dict
+        except Exception as e:
+            runtimes[language] = {
+                "available": False,
+                "error": str(e),
+            }
+    
+    result = {
+        "project_path": project_path,
+        "project_name": Path(project_path).name,
+        "config_file": str(config_file) if has_config_file else None,
+        "has_config_file": has_config_file,
+        "runtimes": runtimes,
+        "lsp_enabled": config.lsp.enabled if config else True,
+        "dap_enabled": config.dap.enabled if config else True,
+    }
+    
+    # Add explicit config values if .otter.toml exists
+    if has_config_file and config:
+        # Add any explicit runtime overrides from config
+        explicit_runtimes = {}
+        if hasattr(config, 'python_path') and config.python_path:
+            explicit_runtimes['python'] = config.python_path
+        
+        if explicit_runtimes:
+            result['explicit_runtime_overrides'] = explicit_runtimes
+    
+    return result
+
+
+@mcp.tool()
+async def get_runtime_info(
+    project_path: str,
+    language: str | None = None
+) -> Dict[str, Any]:
+    """Preview what runtimes would be detected for a different project.
+    
+    This is useful BEFORE debugging a different project to verify the correct
+    runtime will be used. Does NOT change Otter's configuration.
+    
+    Args:
+        project_path: Path to the project to check runtimes for
+        language: Optional specific language to check (python, javascript, typescript, rust, go)
+                 If not provided, checks all supported languages
+    
+    Returns:
+        Dict with runtime information for the specified project:
+        - path: Resolved path to runtime executable
+        - version: Version string
+        - source: How it was detected (venv, system, etc.)
+        - is_symlink: True if the runtime is a symlink (e.g., UV venvs)
+        - symlink_path: Original symlink path before resolution
+        - resolved_path: Where the symlink points to
+        
+        If language not specified: Dict of all detected runtimes
+    
+    Examples:
+        # Check Python runtime for fern-mono BEFORE debugging it
+        >>> runtime = get_runtime_info(
+        ...     project_path="/Users/user/fern-folder/fern-mono",
+        ...     language="python"
+        ... )
+        >>> print(f"Would use: {runtime['path']}")
+        >>> print(f"Source: {runtime['source']}")
+        "Would use: /Users/user/fern-folder/fern-mono/.venv/bin/python"
+        "Source: venv"
+        
+        # Check all runtimes for a project
+        >>> runtimes = get_runtime_info("/path/to/project")
+        >>> for lang, info in runtimes.items():
+        ...     if info['available']:
+        ...         print(f"{lang}: {info['path']}")
+        
+        # Check if a different project's venv has required dependencies
+        >>> runtime = get_runtime_info(
+        ...     project_path="/Users/user/other-project",
+        ...     language="python"
+        ... )
+        >>> print(f"That project uses: {runtime['path']}")
+        >>> print(f"Source: {runtime['source']}")
+        
+        Note: To debug that project, start a separate Otter instance for it.
+    """
+    from otter.runtime import RuntimeResolver
+    from otter.config import load_config
+    
+    target_path = Path(project_path)
+    if not target_path.exists():
+        return {
+            "error": f"Project path does not exist: {project_path}",
+            "project_path": project_path,
+        }
+    
+    config = load_config(target_path)
+    resolver = RuntimeResolver(target_path)
+    
+    # Check specific language or all
+    languages = [language] if language else ["python", "javascript", "typescript", "rust", "go"]
+    
+    results = {}
+    for lang in languages:
+        try:
+            runtime = resolver.resolve_runtime(lang, config)
+            runtime_dict = {
+                "path": str(runtime.path),
+                "version": runtime.version,
+                "source": runtime.source,
+                "available": True,
+            }
+            
+            # Add symlink info for transparency
+            if runtime.is_symlink and runtime.original_path:
+                runtime_dict["is_symlink"] = True
+                runtime_dict["symlink_path"] = runtime.original_path
+                runtime_dict["resolved_path"] = runtime.path
+            
+            results[lang] = runtime_dict
+        except Exception as e:
+            results[lang] = {
+                "available": False,
+                "error": str(e),
+            }
+    
+    # If single language requested, return just that runtime
+    if language:
+        result = results[language]
+        result['project_path'] = project_path
+        result['language'] = language
+        return result
+    
+    # Otherwise return all runtimes
+    return {
+        "project_path": project_path,
+        "project_name": target_path.name,
+        "runtimes": results,
+    }
 
 
 # ============================================================================

@@ -52,11 +52,12 @@ class DebugService:
         breakpoints: Optional[List[int]] = None,
         args: Optional[List[str]] = None,
         env: Optional[Dict[str, str]] = None,
-        cwd: Optional[str] = None,
         stop_on_entry: bool = False,
         just_my_code: bool = True,
     ) -> DebugSession:
         """Start a debug session for a file or module.
+        
+        Must provide either `file` OR `module` parameter.
 
         Args:
             file: File path to debug (mutually exclusive with module)
@@ -100,20 +101,6 @@ class DebugService:
             elif ext == '.go':
                 language = 'go'
         
-        # 🔋 BATTERIES INCLUDED: Ensure debug adapter is available
-        # This will auto-install if missing (like LSP servers)
-        try:
-            await ensure_dap_adapter(language, auto_install=True)
-        except RuntimeError as e:
-            # Provide clear, actionable error message
-            raise RuntimeError(
-                f"❌ Debug adapter not available for {language}.\n\n"
-                f"Error: {str(e)}\n\n"
-                f"💡 This usually means the debug adapter needs to be installed.\n"
-                f"   Otter attempted to install it automatically but failed.\n"
-                f"   Please check the error above for details."
-            )
-
         # Resolve paths
         file_path = None
         if file:
@@ -121,21 +108,21 @@ class DebugService:
             if not file_path.exists():
                 raise RuntimeError(f"File not found: {file_path}")
 
-        # Resolve working directory
-        launch_cwd = cwd if cwd else str(self.project_path)
-        
         # 🔋 CRITICAL: Resolve runtime using GENERIC resolver
-        # Create a resolver for the TARGET project (not Otter's project!)
-        # This ensures we use the correct venv/runtime for the project being debugged
-        target_resolver = RuntimeResolver(Path(launch_cwd))
-        
-        # Works for Python, Node, Rust, Go, etc.
+        # Use the SAME project path as LSP and all other Otter tools
         # LSP and DAP use the EXACT SAME runtime!
         runtime_path = None
         if language in ["python", "javascript", "typescript", "rust", "go"]:
             try:
-                runtime = target_resolver.resolve_runtime(language, self.config)
-                runtime_path = runtime.path
+                runtime = self.runtime_resolver.resolve_runtime(language, self.config)
+                
+                # 🔑 CRITICAL: For symlinks (UV venvs), use the ORIGINAL path, not resolved!
+                # Why: UV venvs work via pyvenv.cfg which is found relative to the symlink
+                # Using the resolved path bypasses the venv structure
+                if runtime.is_symlink and runtime.original_path:
+                    runtime_path = runtime.original_path  # Use .venv/bin/python
+                else:
+                    runtime_path = runtime.path  # Use resolved path
                 
                 # 📢 EXPLICIT: Log which runtime we're using
                 # This is critical for debugging and transparency
@@ -158,26 +145,12 @@ class DebugService:
                 version_str = f" v{runtime.version}" if runtime.version else ""
                 print(f"\n{icon} Using {display_name} runtime: {runtime_path}{version_str}")
                 print(f"   Source: {runtime.source}")
-                print(f"   (This is the same runtime used by LSP servers)")
                 
-                # Verify debug adapter is available for this runtime
-                if language == "python":
-                    import subprocess
-                    try:
-                        result = subprocess.run(
-                            [runtime_path, "-c", "import debugpy; print(debugpy.__version__)"],
-                            capture_output=True,
-                            text=True,
-                            timeout=5
-                        )
-                        if result.returncode == 0:
-                            debugpy_version = result.stdout.strip()
-                            print(f"   ✅ debugpy {debugpy_version} is available")
-                        else:
-                            print(f"   ⚠️  WARNING: debugpy may not be installed")
-                            print(f"   Install with: {runtime_path} -m pip install debugpy")
-                    except Exception as e:
-                        print(f"   ⚠️  Could not verify debugpy: {e}")
+                # Show symlink info for transparency
+                if runtime.is_symlink and runtime.original_path:
+                    print(f"   (Symlink to: {runtime.path})")
+                
+                print(f"   (This is the same runtime used by LSP servers)")
             
             except RuntimeError as e:
                 # Runtime resolution failed
@@ -187,6 +160,20 @@ class DebugService:
                     f"💡 This runtime is needed for both LSP and DAP.\n"
                     f"   Configure it in .otter.toml or install it system-wide."
                 )
+
+        # 🔋 BATTERIES INCLUDED: Ensure debug adapter is available IN THE TARGET RUNTIME
+        # CRITICAL: Pass runtime_path so we check/install in the PROJECT's venv, not Otter's!
+        try:
+            await ensure_dap_adapter(language, auto_install=True, runtime_path=runtime_path)
+        except RuntimeError as e:
+            # Provide clear, actionable error message
+            raise RuntimeError(
+                f"❌ Debug adapter not available for {language}.\n\n"
+                f"Error: {str(e)}\n\n"
+                f"💡 This usually means the debug adapter needs to be installed.\n"
+                f"   Otter attempted to install it automatically but failed.\n"
+                f"   Please check the error above for details."
+            )
 
         # 🎯 Generate session ID FIRST - Python is the source of truth
         # This ID will be used to track the session in both Python and Lua
@@ -202,7 +189,7 @@ class DebugService:
             config_name=configuration,
             args=args,
             env=env,
-            cwd=launch_cwd,
+            cwd=str(self.project_path),  # Always use Otter's project
             stop_on_entry=stop_on_entry,
             just_my_code=just_my_code,
             runtime_path=runtime_path,  # 🔋 Generic runtime path (works for all languages!)
@@ -253,7 +240,7 @@ class DebugService:
             crash_reason=None,
             launch_args=args,
             launch_env=env,
-            launch_cwd=launch_cwd,
+            launch_cwd=str(self.project_path),  # Always Otter's project
         )
 
         # Track session metadata
@@ -261,7 +248,7 @@ class DebugService:
             "file": str(file_path) if file_path else None,
             "module": module,
             "config": config_name,
-            "cwd": launch_cwd,
+            "cwd": str(self.project_path),  # Always Otter's project
             "args": args,
             "env": env,
         }

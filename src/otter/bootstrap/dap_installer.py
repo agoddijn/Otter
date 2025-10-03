@@ -65,20 +65,43 @@ def check_command_availability(cmd: str) -> bool:
     return shutil.which(cmd) is not None
 
 
-def check_python_package(package: str) -> bool:
-    """Check if a Python package is importable."""
-    try:
-        __import__(package)
-        return True
-    except ImportError:
-        return False
+def check_python_package(package: str, python_path: Optional[str] = None) -> bool:
+    """Check if a Python package is importable in a specific Python runtime.
+    
+    Args:
+        package: Package name to check
+        python_path: Path to Python executable. If None, uses current Python.
+        
+    Returns:
+        True if package is available, False otherwise
+    """
+    if python_path:
+        # Check in the specified Python runtime (e.g., project venv)
+        try:
+            result = subprocess.run(
+                [python_path, "-c", f"import {package}"],
+                capture_output=True,
+                timeout=5.0,
+            )
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return False
+    else:
+        # Fallback: check in current Python
+        try:
+            __import__(package)
+            return True
+        except ImportError:
+            return False
 
 
-def check_dap_adapter(language: str) -> DAPAdapterStatus:
+def check_dap_adapter(language: str, runtime_path: Optional[str] = None) -> DAPAdapterStatus:
     """Check if a DAP adapter is installed for a language.
     
     Args:
         language: Language name (e.g., "python", "javascript")
+        runtime_path: Path to language runtime (e.g., Python executable) to check packages in.
+                     For Python, this ensures we check debugpy in the PROJECT's venv, not Otter's.
         
     Returns:
         DAPAdapterStatus indicating if adapter is installed
@@ -95,11 +118,11 @@ def check_dap_adapter(language: str) -> DAPAdapterStatus:
     
     # Check adapter availability
     if "check_import" in info:
-        # Python package check
-        if check_python_package(info["check_import"]):
+        # Python package check - use the target runtime's Python
+        if check_python_package(info["check_import"], python_path=runtime_path):
             return DAPAdapterStatus.INSTALLED
     elif "check_cmd" in info:
-        # Command check
+        # Command check (for non-Python languages)
         if check_command_availability(info["check_cmd"]):
             return DAPAdapterStatus.INSTALLED
     
@@ -144,11 +167,13 @@ def print_missing_prerequisites(language: str, missing: List[str]) -> None:
         print(f"   https://golang.org/dl/")
 
 
-async def install_dap_adapter(language: str) -> bool:
+async def install_dap_adapter(language: str, runtime_path: Optional[str] = None) -> bool:
     """Install a DAP adapter for a language.
     
     Args:
         language: Language name
+        runtime_path: Path to language runtime (e.g., Python executable).
+                     For Python, this ensures we install debugpy in the PROJECT's venv.
         
     Returns:
         True if installation successful, False otherwise
@@ -165,6 +190,11 @@ async def install_dap_adapter(language: str) -> bool:
         if "install_note" in info:
             print(f"   {info['install_note']}")
         return False
+    
+    # For Python packages, use the target Python's pip
+    if language == "python" and runtime_path and install_cmd[0] == "pip":
+        # Use python -m pip instead of system pip
+        install_cmd = [runtime_path, "-m", "pip"] + install_cmd[1:]
     
     print(f"\n📦 Installing {info['description']}...")
     print(f"   Command: {' '.join(install_cmd)}")
@@ -196,20 +226,23 @@ async def install_dap_adapter(language: str) -> bool:
 
 async def check_and_install_dap_adapter(
     language: str,
-    auto_install: bool = True
+    auto_install: bool = True,
+    runtime_path: Optional[str] = None,
 ) -> tuple[DAPAdapterStatus, Optional[str]]:
     """Check and optionally install a DAP adapter.
     
     Args:
         language: Language to check/install adapter for
         auto_install: Whether to auto-install if missing
+        runtime_path: Path to language runtime (e.g., Python executable).
+                     Ensures we check/install in the correct environment.
         
     Returns:
         (status, error_message)
     """
     print(f"\n🔍 Checking {language} debugger...")
     
-    status = check_dap_adapter(language)
+    status = check_dap_adapter(language, runtime_path=runtime_path)
     
     if status == DAPAdapterStatus.INSTALLED:
         info = DAP_ADAPTER_INFO.get(language, {})
@@ -241,31 +274,63 @@ async def check_and_install_dap_adapter(
     print(f"\n📦 Auto-installing {language} debugger...")
     print(f"   (This may take a minute)")
     
-    success = await install_dap_adapter(language)
+    success = await install_dap_adapter(language, runtime_path=runtime_path)
     
     if success:
         # Verify installation
-        final_status = check_dap_adapter(language)
+        final_status = check_dap_adapter(language, runtime_path=runtime_path)
         if final_status == DAPAdapterStatus.INSTALLED:
             return final_status, None
         else:
             error_msg = f"Installation appeared to succeed but {language} debugger still not found"
             return DAPAdapterStatus.MISSING, error_msg
     else:
+        # Installation failed - provide helpful fallback guidance
+        install_cmd_str = ' '.join(info.get('install_cmd', []))
+        
+        # For Python, check if debugpy is available in system Python
+        # (Can't use it directly, but can guide user to install in their venv)
+        fallback_note = ""
+        if language == "python":
+            # Check if debugpy exists in system Python
+            system_has_debugpy = check_python_package("debugpy", python_path=None)
+            if system_has_debugpy and runtime_path:
+                fallback_note = (
+                    f"\n\n💡 NOTE: debugpy is installed in your system Python, "
+                    f"but it needs to be in your project's venv.\n"
+                    f"   Install it manually:\n"
+                    f"     {runtime_path} -m pip install debugpy"
+                )
+        
         error_msg = (
             f"Failed to install {language} debugger. "
-            f"Please install manually: {' '.join(info.get('install_cmd', []))}"
+            f"Please install manually: {install_cmd_str}"
+            f"{fallback_note}"
         )
         return DAPAdapterStatus.MISSING, error_msg
 
 
-async def ensure_dap_adapter(language: str, auto_install: bool = True) -> None:
+async def ensure_dap_adapter(
+    language: str, 
+    auto_install: bool = True,
+    runtime_path: Optional[str] = None,
+) -> None:
     """Ensure a DAP adapter is available, installing if needed.
+    
+    Args:
+        language: Language to ensure adapter for
+        auto_install: Whether to auto-install if missing
+        runtime_path: Path to language runtime (e.g., Python executable).
+                     Ensures we check/install in the correct environment.
     
     Raises:
         RuntimeError: If adapter is not available and cannot be installed
     """
-    status, error_msg = await check_and_install_dap_adapter(language, auto_install)
+    status, error_msg = await check_and_install_dap_adapter(
+        language, 
+        auto_install,
+        runtime_path=runtime_path
+    )
     
     if status != DAPAdapterStatus.INSTALLED:
         raise RuntimeError(error_msg or f"{language} debugger not available")
