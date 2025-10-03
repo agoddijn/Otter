@@ -19,13 +19,13 @@ class TestRuntimeSpecs:
         
         for language, spec in RUNTIME_SPECS.items():
             for field in required_fields:
-                assert field in spec, f"{language} missing {field}"
+                assert hasattr(spec, field), f"{language} missing {field}"
     
     def test_get_runtime_spec_valid_language(self):
         """Should return spec for valid language."""
         spec = get_runtime_spec("python")
-        assert spec["display_name"] == "Python"
-        assert spec["executable_name"] == "python"
+        assert spec.display_name == "Python"
+        assert spec.executable_name == "python"
     
     def test_get_runtime_spec_invalid_language(self):
         """Should raise ValueError for invalid language."""
@@ -35,10 +35,10 @@ class TestRuntimeSpecs:
     def test_python_spec_structure(self):
         """Python spec should have correct structure."""
         spec = RUNTIME_SPECS["python"]
-        assert spec["config_key"] == "python_path"
-        assert len(spec["auto_detect"]) > 0
-        assert spec["auto_detect"][0]["type"] == "venv"
-        assert ".venv" in spec["auto_detect"][0]["patterns"]
+        assert spec.config_key == "python_path"
+        assert len(spec.auto_detect) > 0
+        assert spec.auto_detect[0].type == "venv"
+        assert ".venv" in spec.auto_detect[0].patterns
 
 
 class TestRuntimeInfo:

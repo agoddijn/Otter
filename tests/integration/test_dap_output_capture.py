@@ -174,7 +174,6 @@ time.sleep(1)
     # Start debug session with module
     session = await service.start_debug_session(
         module="test_module",
-        cwd=str(tmp_path),
         stop_on_entry=False,
     )
     
