@@ -987,6 +987,12 @@ async def get_debug_session_info(session_id: str | None = None) -> Dict[str, Any
         - launch_args: Command-line arguments used
         - launch_env: Environment variables used
         - launch_cwd: Working directory used
+        - diagnostic_info: List of diagnostic messages showing:
+          * DAP configuration (pythonPath, cwd, module, args, etc.)
+          * Initialization events
+          * Stopped events (reason, thread ID, description)
+          * Continued events
+          Useful for diagnosing unexpected debugger behavior!
 
     Examples:
         # Get current session
@@ -998,6 +1004,12 @@ async def get_debug_session_info(session_id: str | None = None) -> Dict[str, Any
         >>> info = get_debug_session_info(session_id=session["session_id"])
         >>> print(info["stderr"])  # See crash details
         >>> print(info["crash_reason"])  # "Process exited with code 1"
+        
+        # Debug unexpected pausing behavior
+        >>> session = start_debug_session(module="uvicorn", args=["app:main"])
+        >>> # Debugger keeps pausing unexpectedly...
+        >>> info = get_debug_session_info(session_id=session["session_id"])
+        >>> print(info["diagnostic_info"])  # See all stopped/continued events
         
         # Crashed sessions persist for 5 minutes for diagnosis!
     """
@@ -1729,8 +1741,13 @@ async def get_otter_config() -> Dict[str, Any]:
     for language in ["python", "javascript", "typescript", "rust", "go"]:
         try:
             runtime = resolver.resolve_runtime(language, config)
+            
+            # 🔑 CRITICAL: For symlinks (UV venvs), report the ORIGINAL path as primary
+            # This is the path you should actually USE for execution
+            usable_path = runtime.original_path if (runtime.is_symlink and runtime.original_path) else runtime.path
+            
             runtime_dict = {
-                "path": str(runtime.path),
+                "path": str(usable_path),  # The path you should USE
                 "version": runtime.version,
                 "source": runtime.source,
                 "available": True,
@@ -1845,8 +1862,13 @@ async def get_runtime_info(
     for lang in languages:
         try:
             runtime = resolver.resolve_runtime(lang, config)
+            
+            # 🔑 CRITICAL: For symlinks (UV venvs), report the ORIGINAL path as primary
+            # This is the path you should actually USE for execution
+            usable_path = runtime.original_path if (runtime.is_symlink and runtime.original_path) else runtime.path
+            
             runtime_dict = {
-                "path": str(runtime.path),
+                "path": str(usable_path),  # The path you should USE
                 "version": runtime.version,
                 "source": runtime.source,
                 "available": True,

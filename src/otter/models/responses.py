@@ -348,6 +348,7 @@ class DebugSession:
     launch_args: Optional[List[str]] = None  # Command-line arguments used
     launch_env: Optional[Dict[str, str]] = None  # Environment variables used
     launch_cwd: Optional[str] = None  # Working directory used
+    diagnostic_info: List[str] = field(default_factory=list)  # Diagnostic logs (DAP config, initialization events, etc.)
 
 
 @dataclass

@@ -1621,7 +1621,14 @@ end
             terminated = false,
             start_time = os.time(),
             nvim_session_id = nil,  -- Will be filled after dap.run()
+            diagnostic_info = {{}},  -- Store diagnostic messages here
         }}
+        
+        -- 🔍 Store DAP configuration for diagnostics
+        -- This helps diagnose module-based debugging issues
+        local config_str = vim.inspect(config)
+        table.insert(_G.otter_session_registry[user_session_id].diagnostic_info, 
+            string.format("DAP Configuration: %s", config_str))
         
         local session_data = _G.otter_session_registry[user_session_id]
         
@@ -1652,6 +1659,33 @@ end
             end
         end
         
+        -- 🔍 Capture initialization events
+        local initialized_listener = 'otter_initialized_' .. user_session_id
+        dap.listeners.after.event_initialized[initialized_listener] = function(session, body)
+            table.insert(session_data.diagnostic_info, 
+                string.format("Session initialized successfully at %s", os.date("%H:%M:%S")))
+        end
+        
+        -- 🔍 Capture stopped events to diagnose unexpected pausing
+        local stopped_listener = 'otter_stopped_' .. user_session_id
+        dap.listeners.after.event_stopped[stopped_listener] = function(session, body)
+            local reason = body.reason or "unknown"
+            local description = body.description or body.text or ""
+            local thread_id = body.threadId or "unknown"
+            local diagnostic_msg = string.format(
+                "Stopped: reason=%s, thread=%s, desc=%s",
+                reason, thread_id, description
+            )
+            table.insert(session_data.diagnostic_info, diagnostic_msg)
+        end
+        
+        -- 🔍 Capture continued events
+        local continued_listener = 'otter_continued_' .. user_session_id
+        dap.listeners.after.event_continued[continued_listener] = function(session, body)
+            table.insert(session_data.diagnostic_info, 
+                string.format("Continued execution at %s", os.date("%H:%M:%S")))
+        end
+        
         local terminated_listener = 'otter_terminated_' .. user_session_id
         dap.listeners.after.event_terminated[terminated_listener] = function(session, body)
             session_data.terminated = true
@@ -1661,6 +1695,9 @@ end
             dap.listeners.after.event_process[process_listener] = nil
             dap.listeners.after.event_output[output_listener] = nil
             dap.listeners.after.event_exited[exited_listener] = nil
+            dap.listeners.after.event_initialized[initialized_listener] = nil
+            dap.listeners.after.event_stopped[stopped_listener] = nil
+            dap.listeners.after.event_continued[continued_listener] = nil
             dap.listeners.after.event_terminated[terminated_listener] = nil
             
             -- 🎯 Smart retention: Keep crashes longer than clean exits
@@ -2303,6 +2340,7 @@ end
             terminated = session_data.terminated or false,
             uptime_seconds = uptime,
             crash_reason = crash_reason,
+            diagnostic_info = session_data.diagnostic_info or {{}},  -- Include diagnostic logs
         }}
         """
 

@@ -241,6 +241,7 @@ class DebugService:
             launch_args=args,
             launch_env=env,
             launch_cwd=str(self.project_path),  # Always Otter's project
+            diagnostic_info=result.get("diagnostic_info", []),  # Include diagnostic logs
         )
 
         # Track session metadata
@@ -587,6 +588,7 @@ class DebugService:
             launch_args=metadata.get("args"),
             launch_env=metadata.get("env"),
             launch_cwd=metadata.get("cwd"),
+            diagnostic_info=info.get("diagnostic_info", []),  # Include diagnostic logs
         )
 
     def list_active_sessions(self) -> List[str]:
