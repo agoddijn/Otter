@@ -6,9 +6,9 @@ find_definition works consistently across all supported languages.
 
 import pytest
 
-from src.otter.neovim.client import NeovimClient
 from src.otter.services.navigation import NavigationService
 from tests.fixtures.language_configs import LanguageTestConfig
+from tests.fixtures.lsp_test_fixtures import nvim_client_with_lsp
 
 
 @pytest.mark.asyncio
@@ -16,21 +16,12 @@ class TestFindDefinitionParameterized:
     """Language-agnostic integration tests for find_definition."""
 
     @pytest.fixture
-    async def navigation_service(self, language_project_dir, language_config: LanguageTestConfig):
-        """Create NavigationService with a real Neovim instance for the test language."""
-        nvim_client = NeovimClient(project_path=str(language_project_dir))
+    async def navigation_service(self, nvim_client_with_lsp, language_project_dir):
+        """Create NavigationService with a ready LSP client."""
         service = NavigationService(
-            nvim_client=nvim_client, project_path=str(language_project_dir)
+            nvim_client=nvim_client_with_lsp, project_path=str(language_project_dir)
         )
-
-        await nvim_client.start()
-
-        # Wait for LSP to analyze the files
-        import asyncio
-        await asyncio.sleep(2)
-
         yield service
-        await nvim_client.stop()
 
     async def test_find_class_definition(
         self, navigation_service, language_project_dir, language_config: LanguageTestConfig

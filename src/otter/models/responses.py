@@ -330,11 +330,17 @@ class ExecutionState:
 class DebugSession:
     session_id: str
     status: Literal["running", "paused", "stopped", "exited"]
-    file: str
-    configuration: str  # Name of the debug configuration used
+    file: Optional[str] = None  # File being debugged (None for module launches)
+    module: Optional[str] = None  # Module being debugged (e.g., "uvicorn")
+    configuration: Optional[str] = None  # Name of the debug configuration used
     breakpoints: List[BreakpointInfo] = field(default_factory=list)
     current_line: Optional[int] = None
     current_file: Optional[str] = None
+    output: str = ""  # Recent stdout/stderr from the debugged process
+    pid: Optional[int] = None  # Process ID of the debugged process
+    launch_args: Optional[List[str]] = None  # Command-line arguments used
+    launch_env: Optional[Dict[str, str]] = None  # Environment variables used
+    launch_cwd: Optional[str] = None  # Working directory used
 
 
 @dataclass

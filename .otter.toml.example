@@ -1,0 +1,156 @@
+# Otter IDE Configuration
+# Place this file at your project root as .otter.toml to customize the IDE behavior
+
+[project]
+# Project name (optional, defaults to directory name)
+# name = "my-project"
+
+[lsp]
+# Global LSP settings
+enabled = true
+# Auto-detect languages based on files in project (default: true)
+auto_detect = true
+# Only start LSP when a file of that language is opened (default: true)
+lazy_load = true
+# Auto-install missing LSP servers on startup (default: true)
+auto_install = true
+# Timeout for LSP operations in milliseconds
+timeout_ms = 2000
+
+# Explicitly enable/disable specific languages
+# If not specified and auto_detect=true, will detect based on file extensions
+# languages = ["python", "javascript", "typescript", "rust", "go"]
+# disabled_languages = []  # Never load these even if files present
+
+# ============================================================================
+# Python LSP Configuration
+# ============================================================================
+[lsp.python]
+enabled = true
+# Available servers: "pyright" (default), "pylsp", "ruff_lsp"
+server = "pyright"
+
+# Python interpreter path (supports template variables)
+# ${PROJECT_ROOT} - absolute path to project root
+# ${VENV} - auto-detected virtualenv path (.venv, venv, env, .env)
+# python_path = "${VENV}/bin/python"
+# python_path = "/usr/local/bin/python3.11"
+
+# LSP server settings (passed directly to LSP)
+[lsp.python.settings]
+# Pyright-specific settings
+# python.analysis.typeCheckingMode = "basic"  # "off", "basic", or "strict"
+# python.analysis.autoSearchPaths = true
+# python.analysis.useLibraryCodeForTypes = true
+# python.analysis.diagnosticMode = "workspace"  # "openFilesOnly" or "workspace"
+
+# ============================================================================
+# JavaScript/TypeScript LSP Configuration
+# ============================================================================
+[lsp.javascript]
+enabled = true
+server = "tsserver"  # Default and recommended
+
+# Node.js path (if not in PATH)
+# node_path = "/usr/local/bin/node"
+
+[lsp.typescript]
+enabled = true
+server = "tsserver"
+
+# ============================================================================
+# Rust LSP Configuration
+# ============================================================================
+[lsp.rust]
+enabled = true
+server = "rust_analyzer"
+
+[lsp.rust.settings]
+# Rust analyzer settings
+# rust-analyzer.cargo.features = "all"
+# rust-analyzer.checkOnSave.command = "clippy"
+
+# ============================================================================
+# Go LSP Configuration
+# ============================================================================
+[lsp.go]
+enabled = true
+server = "gopls"
+
+# ============================================================================
+# DAP (Debug Adapter Protocol) Configuration
+# ============================================================================
+[dap]
+enabled = true
+auto_detect = true  # Auto-detect based on languages
+lazy_load = true    # Only load when debugging starts
+
+# ============================================================================
+# Python DAP Configuration
+# ============================================================================
+[dap.python]
+enabled = true
+adapter = "debugpy"  # Default debugger for Python
+
+# Python interpreter for debugging (uses same variables as LSP)
+# python_path = "${VENV}/bin/python"
+
+# Custom debug configurations
+# [[dap.python.configurations]]
+# name = "Launch with args"
+# type = "python"
+# request = "launch"
+# program = "${file}"
+# args = ["--verbose", "--debug"]
+
+# ============================================================================
+# JavaScript/TypeScript DAP Configuration
+# ============================================================================
+[dap.javascript]
+enabled = true
+adapter = "node2"  # or "pwa-node"
+
+[dap.typescript]
+enabled = true
+adapter = "node2"
+
+# ============================================================================
+# Rust DAP Configuration
+# ============================================================================
+[dap.rust]
+enabled = true
+adapter = "lldb"  # or "codelldb"
+
+# ============================================================================
+# Go DAP Configuration
+# ============================================================================
+[dap.go]
+enabled = true
+adapter = "delve"
+
+# ============================================================================
+# Performance Settings
+# ============================================================================
+[performance]
+# Maximum number of concurrent LSP clients
+max_lsp_clients = 5
+# Maximum number of concurrent DAP sessions
+max_dap_sessions = 2
+# Debounce file changes before triggering LSP (ms)
+file_change_debounce_ms = 300
+
+# ============================================================================
+# Plugin Configuration
+# ============================================================================
+[plugins]
+# Enable/disable specific plugins
+treesitter = true
+lsp = true
+dap = true
+
+[plugins.treesitter]
+# TreeSitter parsers to install
+# If empty or not specified, auto-installs based on detected languages
+# ensure_installed = ["python", "javascript", "typescript", "rust", "go"]
+auto_install = true
+

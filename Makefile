@@ -92,7 +92,11 @@ run: ## Run MCP server in production mode
 	@echo ".env: $(ENV_STATUS)"
 	PYTHONPATH=src IDE_PROJECT_PATH=$(PROJECT) uv run python -m otter.mcp_server
 
-test: ## Run all tests (parallelized with pytest-xdist, Python only for now)
+install-lsp-servers: ## Install LSP servers required for tests
+	@echo "Installing LSP servers for tests..."
+	@uv run python scripts/install_test_lsp_servers.py || echo "⚠️  Some LSP servers couldn't be installed. Tests may be skipped."
+
+test: install-lsp-servers ## Run all tests (parallelized with pytest-xdist, Python only for now)
 	PYTHONPATH=src uv run pytest tests/
 
 test-unit: ## Run unit tests only

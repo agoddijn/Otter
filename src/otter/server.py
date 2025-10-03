@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from .models.responses import (
@@ -50,6 +51,10 @@ class CliIdeServer:
 
         # Initialize Neovim client
         self.nvim_client = NeovimClient(project_path=self.project_path)
+        
+        # Load unified config for LSP and DAP
+        from .config import load_config
+        self._config = load_config(Path(self.project_path))
 
         # Initialize services with Neovim client
         self.navigation = NavigationService(
@@ -64,8 +69,11 @@ class CliIdeServer:
         self.workspace = WorkspaceService(  # type: ignore
             project_path=self.project_path, nvim_client=self.nvim_client
         )
+        # Pass config to DebugService for unified Python path (same as LSP)
         self.debugging = DebugService(  # type: ignore
-            nvim_client=self.nvim_client, project_path=self.project_path
+            nvim_client=self.nvim_client,
+            project_path=self.project_path,
+            config=self._config  # 🔋 Unified config
         )
         self.editing = EditingService(  # type: ignore
             nvim_client=self.nvim_client, project_path=self.project_path
@@ -197,13 +205,18 @@ class CliIdeServer:
     # Debugging (DAP-Powered)
     async def start_debug_session(
         self,
-        file: str,
+        file: Optional[str] = None,
+        module: Optional[str] = None,
         configuration: Optional[str] = None,
         breakpoints: Optional[List[int]] = None,
         args: Optional[List[str]] = None,
+        env: Optional[Dict[str, str]] = None,
+        cwd: Optional[str] = None,
+        stop_on_entry: bool = False,
+        just_my_code: bool = True,
     ) -> DebugSession:
         return await self.debugging.start_debug_session(
-            file, configuration, breakpoints, args
+            file, module, configuration, breakpoints, args, env, cwd, stop_on_entry, just_my_code
         )
 
     async def control_execution(

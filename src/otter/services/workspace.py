@@ -172,53 +172,27 @@ class WorkspaceService:
     async def _extract_imports(
         self, file_path: Path, content: str
     ) -> Dict[str, List[str]]:
-        """Extract and expand import statements.
+        """Extract and expand import statements using LSP.
 
-        This detects import statements and attempts to expand them with
-        signatures/definitions from LSP if available.
-
+        This feature requires LSP integration to extract import signatures.
+        
         Args:
             file_path: Path to the file being analyzed
             content: File content with line numbers (format: "N|line content")
 
         Returns:
             Dict mapping import statements to lists of signatures.
-            Currently returns empty lists as expansion is not yet implemented.
 
-        TODO: Implement LSP-based expansion using textDocument/hover or
-              textDocument/definition to get actual signatures like:
-              "from .models import User": ["User(id, name, email, created_at)"]
+        Raises:
+            NotImplementedError: This feature is not yet implemented.
+                              Use the AnalysisService.analyze_dependencies() method instead
+                              for import analysis via TreeSitter.
         """
-        imports: Dict[str, List[str]] = {}
-
-        # Extract import statements (basic detection)
-        for line in content.split("\n"):
-            # Strip line number prefix (format: "N|content")
-            if "|" in line:
-                line_content = line.split("|", 1)[1].strip()
-            else:
-                line_content = line.strip()
-
-            # Python imports
-            if line_content.startswith("import ") or line_content.startswith("from "):
-                # For now, just record the import without expansion
-                # Future: Use LSP to get signatures for each imported symbol
-                imports[line_content] = []
-
-                # TODO: Parse the import to extract symbol names
-                # TODO: For each symbol, call LSP hover/definition
-                # TODO: Extract signature from hover info
-                # Example:
-                #   if "from foo import Bar, Baz" in line_content:
-                #       - Get hover for "Bar" -> extract signature
-                #       - Get hover for "Baz" -> extract signature
-                #       - imports[line_content] = ["Bar(...)", "Baz(...)"]
-
-            # JavaScript/TypeScript imports
-            elif line_content.startswith("import ") and " from " in line_content:
-                imports[line_content] = []
-
-        return imports
+        raise NotImplementedError(
+            "Import expansion is not yet implemented. "
+            "For import analysis, use AnalysisService.analyze_dependencies() which uses "
+            "TreeSitter to extract imports in a language-agnostic way."
+        )
 
     async def _get_file_diagnostics(
         self, file_path: Path, line_range: Optional[Tuple[int, int]] = None

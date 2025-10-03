@@ -24,30 +24,48 @@ class AnalysisService:
         self.project_path = Path(project_path) if project_path else Path.cwd()
 
         # TreeSitter queries for finding imports across different languages
-        # These capture import/require/use statements
+        # These capture the MODULE NAME directly, not the whole statement!
+        # This makes downstream processing language-agnostic.
         self._import_queries = {
             "python": """
-                (import_statement) @import
-                (import_from_statement) @import
+                ; Capture module name from: import foo
+                (import_statement
+                  name: (dotted_name) @module)
+                ; Capture module name from: from foo import bar
+                (import_from_statement
+                  module_name: (dotted_name) @module)
             """,
             "javascript": """
-                (import_statement) @import
+                ; Capture from: import X from 'foo'
+                (import_statement
+                  source: (string) @module)
+                ; Capture from: require('foo')
                 (call_expression
                   function: (identifier) @fn (#eq? @fn "require")
-                ) @import
+                  arguments: (arguments (string) @module))
             """,
             "typescript": """
-                (import_statement) @import
+                ; Capture from: import X from 'foo'
+                (import_statement
+                  source: (string) @module)
+                ; Capture from: require('foo')
                 (call_expression
                   function: (identifier) @fn (#eq? @fn "require")
-                ) @import
+                  arguments: (arguments (string) @module))
             """,
             "rust": """
-                (use_declaration) @import
-                (extern_crate_declaration) @import
+                ; Capture from: use foo::bar
+                (use_declaration
+                  argument: (scoped_identifier
+                    path: (identifier) @module))
+                ; Also capture simple: use foo
+                (use_declaration
+                  argument: (identifier) @module)
             """,
             "go": """
-                (import_declaration) @import
+                ; Capture from: import "foo"
+                (import_spec
+                  path: (interpreted_string_literal) @module)
             """,
         }
 
@@ -120,9 +138,10 @@ class AnalysisService:
         )
 
     async def _get_imports_via_treesitter(self, file_path: Path) -> List[str]:
-        """Extract imports using TreeSitter via Neovim (language-agnostic).
+        """Extract import module names using TreeSitter via Neovim (language-agnostic).
 
         Pure wrapper around TreeSitter - delegates all parsing to Neovim's TreeSitter.
+        Our queries capture @module names directly, making downstream processing language-agnostic.
         """
         try:
             # Open the file in Neovim
@@ -137,8 +156,9 @@ class AnalysisService:
                 # No TreeSitter query for this language - return empty
                 return []
 
-            # Execute TreeSitter query to find import nodes
+            # Execute TreeSitter query to find module names
             # This is pure delegation to Neovim's TreeSitter
+            # The query captures @module, so we get module names directly!
             lua_code = f"""
             local bufnr = vim.fn.bufnr('{file_path}')
             local parser = vim.treesitter.get_parser(bufnr, '{filetype}')
@@ -150,92 +170,107 @@ class AnalysisService:
             local root = tree:root()
             
             local query = vim.treesitter.query.parse('{filetype}', [[{query}]])
-            local imports = {{}}
+            local modules = {{}}
             
             for id, node in query:iter_captures(root, bufnr, 0, -1) do
                 local text = vim.treesitter.get_node_text(node, bufnr)
-                table.insert(imports, text)
+                table.insert(modules, text)
             end
             
-            return imports
+            return modules
             """
 
-            import_nodes = await self.nvim_client.execute_lua(lua_code)
+            module_names = await self.nvim_client.execute_lua(lua_code)
 
-            # Parse the import statements to extract module names
-            imports = self._extract_module_names(import_nodes, filetype)
+            # Clean the module names (remove quotes, etc.)
+            imports = self._extract_module_names(module_names, filetype)
 
             return sorted(set(imports))  # Remove duplicates and sort
 
-        except Exception:
-            # TreeSitter not available or failed - return empty
-            return []
+        except Exception as e:
+            # TreeSitter not available or failed - raise descriptive exception
+            raise RuntimeError(
+                f"Unable to extract imports from {file_path}. "
+                f"TreeSitter parser may not be installed for this file type, "
+                f"or the file has syntax errors. "
+                f"Error: {str(e)}"
+            )
 
     def _extract_module_names(
-        self, import_statements: List[str], filetype: str
+        self, module_names: List[str], filetype: str
     ) -> List[str]:
-        """Extract module names from import statement text."""
+        """Clean module names captured by TreeSitter (language-agnostic).
+        
+        TreeSitter now captures module names directly, we just need to clean them up:
+        - Remove quotes from JavaScript/TypeScript strings: 'foo' -> foo
+        - Remove quotes from Go strings: "foo" -> foo
+        - Python and Rust module names come clean from TreeSitter
+        
+        Args:
+            module_names: Module names captured by TreeSitter @module captures
+            filetype: File type (for any language-specific cleanup if needed)
+            
+        Returns:
+            Cleaned module names
+        """
         import re
-
-        modules = []
-
-        for stmt in import_statements:
-            if filetype == "python":
-                # "import foo" -> "foo"
-                # "from foo import bar" -> "foo"
-                match = re.search(r"(?:import|from)\s+(\S+)", stmt)
-                if match:
-                    modules.append(match.group(1))
-            elif filetype in ("javascript", "typescript"):
-                # "import X from 'foo'" -> "foo"
-                # "require('foo')" -> "foo"
-                match = re.search(r'[\'"]([^\'"]+)[\'"]', stmt)
-                if match:
-                    modules.append(match.group(1))
-            elif filetype == "rust":
-                # "use foo::bar;" -> "foo"
-                match = re.search(r"use\s+(\w+)", stmt)
-                if match:
-                    modules.append(match.group(1))
-            elif filetype == "go":
-                # 'import "foo"' -> "foo"
-                match = re.search(r'"([^"]+)"', stmt)
-                if match:
-                    modules.append(match.group(1))
-
-        return modules
+        
+        cleaned = []
+        for name in module_names:
+            # Strip surrounding whitespace
+            name = name.strip()
+            
+            # Remove surrounding quotes (single or double) if present
+            # This handles JavaScript/TypeScript: 'foo', "foo"
+            # And Go: "foo"
+            if name.startswith(("'", '"')) and name.endswith(("'", '"')):
+                name = name[1:-1]
+            
+            if name:  # Only add non-empty names
+                cleaned.append(name)
+        
+        return cleaned
 
     async def _get_imported_by_via_search(self, target_file: Path) -> List[str]:
-        """Find files that import the target file using ripgrep.
+        """Find files that import the target file using ripgrep (language-agnostic).
 
-        Uses ripgrep with regex patterns to find actual import statements.
-        Searches for language-specific import patterns (Python, JS/TS, Rust, Go).
+        Uses a generic regex pattern that matches common import/require/use syntax
+        across most programming languages.
+        
+        Instead of having separate patterns for each language, we use a broad pattern
+        that captures the common structure:
+        - Import keyword: import, from, require, use, include, etc.
+        - Module reference: the filename/module we're looking for
         """
         try:
             # Get the module/file name to search for
             file_stem = target_file.stem  # filename without extension
-
-            # Build regex pattern for common import patterns across languages
-            # Python: import foo, from foo import, from .foo import, from ..foo
-            # JS/TS: import ... from './foo', require('./foo'), require('foo')
-            # Rust: use foo::, use crate::foo
-            # Go: import "foo", import "path/foo"
-
-            # Build comprehensive regex for import statements
-            # This matches lines that look like actual imports, not just any mention
             import re as regex_module
-
             escaped_stem = regex_module.escape(file_stem)
 
+            # Generic pattern that matches import statements across languages
+            # This covers:
+            # - Python: import foo, from foo import
+            # - JavaScript/TypeScript: import ... from 'foo', require('foo')
+            # - Rust: use foo::
+            # - Go: import "foo"
+            # - Ruby: require 'foo'
+            # - PHP: use foo, include 'foo'
+            # - Java: import foo
+            # - C/C++: #include "foo"
+            # - And many more!
+            
+            # Pattern explanation:
+            # Look for common import keywords followed by the module name
+            # The module name can appear:
+            # - As a bare identifier: import foo
+            # - In quotes: require('foo'), import "foo"
+            # - With path separators: use foo::bar, import foo.bar
             patterns = [
-                # Python imports
-                f"\\b(import|from)\\s+.*\\b{escaped_stem}\\b",
-                # JavaScript/TypeScript imports
-                f"(import|require).*['\"].*{escaped_stem}",
-                # Rust use statements
-                f"use\\s+.*\\b{escaped_stem}\\b",
-                # Go imports
-                f'import\\s+.*"{escaped_stem}"',
+                # Match import-like keywords followed by our module name
+                f"\\b(import|from|require|use|include|#include)\\b.*\\b{escaped_stem}\\b",
+                # Match module name in quotes (for path-based imports)
+                f"(import|require|include).*['\"].*{escaped_stem}",
             ]
 
             # Combine patterns with OR
@@ -248,10 +283,12 @@ class AnalysisService:
             local project_path = '{self.project_path}'
             local target = '{target_file}'
             
-            -- Build and execute ripgrep command
+            -- Build and execute ripgrep command (language-agnostic)
             -- Use vim.fn.shellescape to properly escape the pattern
+            -- Search all source code files (use ripgrep's built-in type filtering)
+            -- This covers Python, JS, TS, Rust, Go, Ruby, PHP, Java, C, C++, and more!
             local cmd = string.format(
-                "rg -e %s -l -g '*.{{py,js,ts,tsx,jsx,rs,go}}' -g '!**/node_modules/**' -g '!**/.git/**' -g '!**/venv/**' -g '!**/__pycache__/**' %s",
+                "rg -e %s -l -t py -t js -t ts -t rust -t go -t ruby -t php -t java -t cpp -t c -g '!**/node_modules/**' -g '!**/.git/**' -g '!**/venv/**' -g '!**/__pycache__/**' -g '!**/target/**' -g '!**/build/**' -g '!**/dist/**' %s",
                 vim.fn.shellescape(pattern),
                 vim.fn.shellescape(project_path)
             )
@@ -287,6 +324,10 @@ class AnalysisService:
             imported_by = await self.nvim_client.execute_lua(lua_code)
 
             return sorted(set(imported_by)) if imported_by else []
-        except Exception:
-            # If ripgrep or search fails, return empty
-            return []
+        except Exception as e:
+            # If ripgrep or search fails, raise descriptive exception
+            raise RuntimeError(
+                f"Unable to search for files importing {target_file}. "
+                f"Ripgrep may not be installed or accessible. "
+                f"Error: {str(e)}"
+            )

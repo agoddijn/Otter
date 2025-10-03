@@ -1,7 +1,7 @@
 site_name: Otter
 site_description: The IDE for AI Agents
-site_url: https://github.com/your-org/otter
-repo_url: https://github.com/your-org/otter
+site_url: https://github.com/agoddijn/otter
+repo_url: https://github.com/agoddijn/otter
 repo_name: otter
 
 docs_dir: docs_site
@@ -70,5 +70,5 @@ nav:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/your-org/otter
+      link: https://github.com/agoddijn/otter
 

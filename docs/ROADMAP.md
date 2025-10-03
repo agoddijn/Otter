@@ -22,7 +22,7 @@ This document specifies planned tools and features for Otter, prioritized by val
 1. `rename_symbol` - LSP-powered safe refactoring
 2. `extract_function` - Smart code extraction
 
-**Total Planned Additions**: 12 new tools (3 high, 5 medium, 4 low priority)
+**Total Planned Additions**: 13 new tools (3 high, 6 medium, 4 low priority)
 
 ---
 
@@ -403,11 +403,73 @@ Remove unused imports and sort import statements.
 
 ---
 
+### 5. External Information Access
+
+**Why Useful**: AI agents often need to look up documentation, API references, library usage examples, and current best practices that aren't available in the local codebase.
+
+#### `web_search`
+Search the web using natural language queries.
+
+**Parameters**:
+- `query` (string, required) - Natural language search query
+- `max_results` (int, default: 5) - Maximum number of results to return
+
+**Returns**:
+```python
+{
+  "query": "how to use async/await in Python",
+  "results": [
+    {
+      "title": "Async IO in Python: A Complete Walkthrough",
+      "url": "https://realpython.com/async-io-python/",
+      "snippet": "A comprehensive guide to asynchronous programming in Python using async/await syntax...",
+      "relevance_score": 0.95
+    },
+    {
+      "title": "Python asyncio documentation",
+      "url": "https://docs.python.org/3/library/asyncio.html",
+      "snippet": "Official documentation for Python's asyncio library...",
+      "relevance_score": 0.92
+    }
+  ],
+  "total_results": 2
+}
+```
+
+**Behavior**:
+- Perform web search using the provided query
+- Return ranked results with titles, URLs, and snippets
+- Filter for programming-related content when appropriate
+- Handle rate limiting gracefully
+
+**Example**:
+```python
+# Search for library documentation
+result = await session.call_tool("web_search", {
+    "query": "FastAPI authentication best practices",
+    "max_results": 3
+})
+
+# Search for error message solutions
+result = await session.call_tool("web_search", {
+    "query": "Python ModuleNotFoundError: No module named 'pydantic'",
+    "max_results": 5
+})
+```
+
+**Implementation Notes**:
+- Use a search API (DuckDuckGo, Brave Search, or similar)
+- Consider caching results for common queries
+- Rate limit to avoid API abuse
+- Prioritize official documentation and reputable sources
+
+---
+
 ## Low Priority Tools (Polish)
 
 Nice-to-have tools that improve the developer experience but aren't essential.
 
-### 5. Additional Intelligence
+### 6. Additional Intelligence
 
 #### `get_signature_help`
 Get parameter hints for function calls.
@@ -513,7 +575,7 @@ Update function signature and all call sites.
 
 ---
 
-### 6. Helper Utilities
+### 7. Helper Utilities
 
 #### `replace_in_buffer`
 Simple string replace wrapper around `edit_buffer`.
@@ -616,12 +678,13 @@ These features are **explicitly excluded** from Otter's scope. AI agents should 
 - `get_buffer_info` - Buffer state queries
 - `apply_code_action` - LSP quick fixes
 
-**Medium Priority (Should Have)**: 5 tools
+**Medium Priority (Should Have)**: 6 tools
 - `get_call_hierarchy` - Function call graphs
 - `find_implementations` - Interface → implementations
 - `inline_function` - Inline refactoring
 - `move_symbol` - Move between files
 - `organize_imports` - Import management
+- `web_search` - Natural language web search
 
 **Low Priority (Nice to Have)**: 4 tools
 - `get_signature_help` - Parameter hints
@@ -629,7 +692,7 @@ These features are **explicitly excluded** from Otter's scope. AI agents should 
 - `change_signature` - Update function signatures
 - `replace_in_buffer` - Simple text replacement
 
-**Total New Tools**: 12
+**Total New Tools**: 13
 
 ---
 
@@ -644,16 +707,17 @@ These features are **explicitly excluded** from Otter's scope. AI agents should 
 4. `get_call_hierarchy` - Advanced navigation
 5. `find_implementations` - Interface resolution
 6. `organize_imports` - Quick win refactoring
+7. `web_search` - External information access
 
 **Phase 3 (Complete Toolkit)** - Estimated 4-5 days
-7. `inline_function` - Refactoring
-8. `move_symbol` - Complex refactoring
-9. `get_signature_help` - Intelligence
+8. `inline_function` - Refactoring
+9. `move_symbol` - Complex refactoring
+10. `get_signature_help` - Intelligence
 
 **Phase 4 (Polish)** - Estimated 2-3 days
-10. `get_type_hierarchy` - Additional navigation
-11. `change_signature` - Advanced refactoring
-12. `replace_in_buffer` - Utility wrapper
+11. `get_type_hierarchy` - Additional navigation
+12. `change_signature` - Advanced refactoring
+13. `replace_in_buffer` - Utility wrapper
 
 **Total Estimated Time**: 11-15 days
 

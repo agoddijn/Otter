@@ -1,0 +1,39 @@
+# Example Otter configuration for a full-stack project
+# (e.g., Python backend + TypeScript frontend)
+# Copy this to your project root as .otter.toml
+
+[lsp]
+# Explicitly enable languages (more performant than auto-detect for large repos)
+languages = ["python", "typescript", "javascript"]
+
+# Python (backend)
+[lsp.python]
+enabled = true
+server = "pyright"
+python_path = "backend/.venv/bin/python"
+
+[lsp.python.settings]
+python.analysis.typeCheckingMode = "basic"
+
+# TypeScript (frontend)
+[lsp.typescript]
+enabled = true
+server = "tsserver"
+
+# JavaScript (frontend)
+[lsp.javascript]
+enabled = true
+server = "tsserver"
+
+# Debugging
+[dap.python]
+enabled = true
+python_path = "backend/.venv/bin/python"
+
+[dap.typescript]
+enabled = true
+
+[performance]
+# Limit concurrent LSP clients in large monorepos
+max_lsp_clients = 3
+

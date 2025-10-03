@@ -1,8 +1,12 @@
+-- Plugin configuration (simplified)
+-- Config is loaded from runtime_config.lua before plugins load
+
 return {
     -- LSP Configuration
     {
         'neovim/nvim-lspconfig',
         config = function()
+            -- Simply call setup - config is already loaded!
             require('lsp').setup()
         end,
     },
@@ -12,37 +16,30 @@ return {
         'nvim-treesitter/nvim-treesitter',
         build = ':TSUpdate',
         config = function()
+            local config = _G.otter_runtime_config or {}
+            
+            -- Install parsers for enabled languages
+            local ensure_installed = {}
+            for lang, _ in pairs(config.enabled_languages or {}) do
+                table.insert(ensure_installed, lang)
+            end
+            
+            -- Add common utilities
+            vim.list_extend(ensure_installed, {"lua", "json", "yaml", "markdown"})
+            
             require('nvim-treesitter.configs').setup({
-                -- Install parsers for languages we support
-                ensure_installed = {
-                    "python",
-                    "javascript",
-                    "typescript",
-                    "tsx",
-                    "rust",
-                    "go",
-                    "lua",
-                    "json",
-                    "yaml",
-                    "markdown",
-                    "bash",
-                },
-                
-                -- Auto-install missing parsers when entering buffer
+                ensure_installed = ensure_installed,
                 auto_install = true,
                 
-                -- Enable syntax highlighting
                 highlight = {
                     enable = true,
                     additional_vim_regex_highlighting = false,
                 },
                 
-                -- Enable incremental selection
                 incremental_selection = {
                     enable = true,
                 },
                 
-                -- Enable indentation
                 indent = {
                     enable = true,
                 },
@@ -54,7 +51,9 @@ return {
     {
         'mfussenegger/nvim-dap',
         config = function()
-            require('dap_config').setup()  -- Load our DAP configurations
+            -- DAP configuration remains as-is for now
+            -- Can be simplified later
+            require('dap_config').setup()
         end,
     },
 }

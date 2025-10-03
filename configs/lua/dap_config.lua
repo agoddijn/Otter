@@ -1,26 +1,46 @@
--- DAP (Debug Adapter Protocol) Configuration
--- Language-agnostic debugging via Neovim's DAP client
---
--- Similar to how we use Neovim's LSP client for language servers,
--- we use Neovim's DAP client for debug adapters.
---
--- This provides debugging for multiple languages without reimplementing
--- the DAP protocol in Python.
+-- Simplified DAP configuration
+-- This module sets up DAP adapters and configurations based on runtime_config.lua
+-- Language-agnostic approach matching lsp.lua
 
 local M = {}
 
-function M.setup()
+-- Get runtime config (guaranteed to exist thanks to init.lua)
+local function get_config()
+    return _G.otter_runtime_config or {
+        enabled_languages = {},
+        dap = { enabled = false, adapters = {} },
+    }
+end
+
+-- Helper to resolve Python path
+local function get_python_path(adapter_config)
+    -- Use configured path if provided
+    if adapter_config.python_path and vim.fn.executable(adapter_config.python_path) == 1 then
+        return adapter_config.python_path
+    end
+    
+    -- Auto-detect venv
+    local cwd = vim.fn.getcwd()
+    local venv_patterns = { '/.venv/', '/venv/', '/env/', '/.env/' }
+    for _, pattern in ipairs(venv_patterns) do
+        local python_path = cwd .. pattern .. 'bin/python'
+        if vim.fn.executable(python_path) == 1 then
+            return python_path
+        end
+    end
+    
+    -- Fallback to system python
+    return 'python'
+end
+
+-- Setup Python DAP
+function M.setup_python(adapter_config)
     local dap = require('dap')
     
-    -- ========================================================================
-    -- Python Configuration (debugpy)
-    -- ========================================================================
-    
+    -- Setup adapter
     dap.adapters.python = function(callback, config)
         if config.request == 'attach' then
-            ---@diagnostic disable-next-line: undefined-field
             local port = (config.connect or config).port
-            ---@diagnostic disable-next-line: undefined-field
             local host = (config.connect or config).host or '127.0.0.1'
             callback({
                 type = 'server',
@@ -31,9 +51,10 @@ function M.setup()
                 },
             })
         else
+            local python_path = get_python_path(adapter_config)
             callback({
                 type = 'executable',
-                command = 'python',
+                command = python_path,
                 args = { '-m', 'debugpy.adapter' },
                 options = {
                     source_filetype = 'python',
@@ -42,63 +63,22 @@ function M.setup()
         end
     end
     
-    dap.configurations.python = {
+    -- Setup configurations
+    local python_path = get_python_path(adapter_config)
+    dap.configurations.python = adapter_config.configurations or {
         {
             type = 'python',
             request = 'launch',
             name = 'Launch file',
             program = '${file}',
-            pythonPath = function()
-                -- Use virtual environment if available
-                local cwd = vim.fn.getcwd()
-                if vim.fn.executable(cwd .. '/.venv/bin/python') == 1 then
-                    return cwd .. '/.venv/bin/python'
-                elseif vim.fn.executable(cwd .. '/venv/bin/python') == 1 then
-                    return cwd .. '/venv/bin/python'
-                else
-                    return 'python'
-                end
-            end,
-        },
-        {
-            type = 'python',
-            request = 'launch',
-            name = 'Launch module',
-            module = '${input:module}',
-            pythonPath = function()
-                local cwd = vim.fn.getcwd()
-                if vim.fn.executable(cwd .. '/.venv/bin/python') == 1 then
-                    return cwd .. '/.venv/bin/python'
-                elseif vim.fn.executable(cwd .. '/venv/bin/python') == 1 then
-                    return cwd .. '/venv/bin/python'
-                else
-                    return 'python'
-                end
-            end,
-        },
-        {
-            type = 'python',
-            request = 'launch',
-            name = 'pytest: current file',
-            module = 'pytest',
-            args = { '${file}', '-v' },
-            pythonPath = function()
-                local cwd = vim.fn.getcwd()
-                if vim.fn.executable(cwd .. '/.venv/bin/python') == 1 then
-                    return cwd .. '/.venv/bin/python'
-                elseif vim.fn.executable(cwd .. '/venv/bin/python') == 1 then
-                    return cwd .. '/venv/bin/python'
-                else
-                    return 'python'
-                end
-            end,
-            console = 'integratedTerminal',
+            pythonPath = python_path,
         },
     }
-    
-    -- ========================================================================
-    -- JavaScript/TypeScript Configuration (node-debug2 or vscode-js-debug)
-    -- ========================================================================
+end
+
+-- Setup JavaScript/TypeScript DAP
+function M.setup_javascript(adapter_config)
+    local dap = require('dap')
     
     dap.adapters.node2 = {
         type = 'executable',
@@ -108,7 +88,7 @@ function M.setup()
         },
     }
     
-    dap.configurations.javascript = {
+    local default_config = {
         {
             type = 'node2',
             request = 'launch',
@@ -121,19 +101,23 @@ function M.setup()
         },
     }
     
-    dap.configurations.typescript = dap.configurations.javascript
+    dap.configurations.javascript = adapter_config.configurations or default_config
+    dap.configurations.typescript = adapter_config.configurations or default_config
+end
+
+-- Setup Rust DAP
+function M.setup_rust(adapter_config)
+    local dap = require('dap')
     
-    -- ========================================================================
-    -- Rust Configuration (lldb-vscode or codelldb)
-    -- ========================================================================
+    local adapter = adapter_config.adapter or 'lldb'
     
     dap.adapters.lldb = {
         type = 'executable',
-        command = 'lldb-vscode', -- or 'codelldb'
+        command = adapter == 'codelldb' and 'codelldb' or 'lldb-vscode',
         name = 'lldb'
     }
     
-    dap.configurations.rust = {
+    dap.configurations.rust = adapter_config.configurations or {
         {
             type = 'lldb',
             request = 'launch',
@@ -143,13 +127,13 @@ function M.setup()
             end,
             cwd = '${workspaceFolder}',
             stopOnEntry = false,
-            args = {},
         },
     }
-    
-    -- ========================================================================
-    -- Go Configuration (delve)
-    -- ========================================================================
+end
+
+-- Setup Go DAP
+function M.setup_go(adapter_config)
+    local dap = require('dap')
     
     dap.adapters.go = {
         type = 'executable',
@@ -157,7 +141,7 @@ function M.setup()
         args = { 'dap', '-l', '127.0.0.1:38697' }
     }
     
-    dap.configurations.go = {
+    dap.configurations.go = adapter_config.configurations or {
         {
             type = 'go',
             name = 'Debug',
@@ -172,17 +156,44 @@ function M.setup()
             program = '${file}',
         },
     }
+end
+
+-- Main setup function (language-agnostic!)
+function M.setup()
+    local config = get_config()
+    local dap = require('dap')
     
-    -- ========================================================================
-    -- DAP Signs (visual indicators in editor)
-    -- ========================================================================
-    
+    -- Setup visual indicators
     vim.fn.sign_define('DapBreakpoint', { text='🔴', texthl='', linehl='', numhl='' })
     vim.fn.sign_define('DapBreakpointCondition', { text='🟠', texthl='', linehl='', numhl='' })
     vim.fn.sign_define('DapLogPoint', { text='📝', texthl='', linehl='', numhl='' })
     vim.fn.sign_define('DapStopped', { text='▶️', texthl='', linehl='', numhl='' })
     vim.fn.sign_define('DapBreakpointRejected', { text='❌', texthl='', linehl='', numhl='' })
+    
+    -- Don't setup if DAP is disabled
+    if not config.dap.enabled then
+        return
+    end
+    
+    -- Setup each enabled language
+    -- We setup all enabled languages immediately since DAP is explicitly triggered
+    for lang, enabled in pairs(config.enabled_languages) do
+        if enabled and config.dap.adapters[lang] then
+            local adapter_config = config.dap.adapters[lang]
+            
+            if adapter_config.enabled ~= false then
+                if lang == 'python' then
+                    M.setup_python(adapter_config)
+                elseif lang == 'javascript' or lang == 'typescript' then
+                    M.setup_javascript(adapter_config)
+                elseif lang == 'rust' then
+                    M.setup_rust(adapter_config)
+                elseif lang == 'go' then
+                    M.setup_go(adapter_config)
+                end
+            end
+        end
+    end
 end
 
 return M
-

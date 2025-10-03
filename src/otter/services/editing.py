@@ -96,7 +96,11 @@ class EditingService:
         file_path = resolve_workspace_path(file, self.project_path)
         
         try:
-            # Read current buffer content
+            # Open or create the buffer
+            # For new files, this will create an empty buffer
+            await self.nvim_client.open_file(str(file_path), create_if_missing=True)
+            
+            # Read current buffer content (will be empty for new files)
             current_lines = await self.nvim_client.read_buffer(str(file_path))
             
             if preview:

@@ -111,10 +111,8 @@ def get_language_config(language: str) -> LanguageTestConfig:
 def get_all_languages() -> List[str]:
     """Get list of all supported languages for parameterized testing.
     
-    Note: Currently only Python tests are enabled. JavaScript and Rust will be
-    re-enabled once better language support is implemented.
+    With the new configuration system supporting auto-detection and lazy loading,
+    all language tests are now enabled.
     """
-    # TODO: Re-enable JavaScript and Rust once language support is improved
-    # return list(LANGUAGE_CONFIGS.keys())
-    return ["python"]  # Only Python for now
+    return list(LANGUAGE_CONFIGS.keys())
 

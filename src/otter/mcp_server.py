@@ -795,12 +795,17 @@ async def analyze_dependencies(
 
 @mcp.tool()
 async def start_debug_session(
-    file: str,
+    file: str | None = None,
+    module: str | None = None,
     configuration: str | None = None,
     breakpoints: List[int] | None = None,
     args: List[str] | None = None,
+    env: Dict[str, str] | None = None,
+    cwd: str | None = None,
+    stop_on_entry: bool = False,
+    just_my_code: bool = True,
 ) -> Dict[str, Any]:
-    """Start a debug session for a file.
+    """Start a debug session for a file or module.
 
     Uses Neovim's DAP client with language-specific debug adapters:
     - Python: debugpy
@@ -809,24 +814,49 @@ async def start_debug_session(
     - Go: delve
 
     Args:
-        file: File path to debug (relative to project root)
+        file: File path to debug (relative to project root). Mutually exclusive with module.
+        module: Module name to debug (e.g., "uvicorn" for `python -m uvicorn`).
+                Mutually exclusive with file.
         configuration: Debug config name ("Launch file", "pytest: current file", etc.)
                       Defaults to first available config for file type
-        breakpoints: Optional list of line numbers for breakpoints
+        breakpoints: Optional list of line numbers for breakpoints (requires file parameter)
         args: Optional command-line arguments for the program
+        env: Optional environment variables to set for the debug session
+             Example: {"DOPPLER_ENV": "1", "DEBUG": "true"}
+        cwd: Optional working directory for the debug session
+             Defaults to project root if not specified
+        stop_on_entry: Whether to stop at the first line of the program (default: False)
+        just_my_code: Whether to debug only user code, skipping library code (default: True)
 
     Returns:
-        DebugSession with session_id, status, file, configuration, and breakpoints
+        DebugSession with session_id, status, file/module, configuration, breakpoints,
+        output, pid, and launch details
 
-    Example:
-        Start debugging a Python file with breakpoints:
+    Examples:
+        Debug a Python file with breakpoints:
         {"file": "src/main.py", "breakpoints": [10, 25, 42]}
 
-        Debug with pytest configuration:
+        Debug uvicorn server with environment variables:
+        {
+            "module": "uvicorn",
+            "args": ["fern_mono.main:app", "--host", "127.0.0.1", "--port", "8000", "--reload"],
+            "env": {"DOPPLER_ENV": "1"}
+        }
+
+        Debug pytest with specific working directory:
+        {
+            "module": "pytest",
+            "args": ["tests/test_app.py", "-v"],
+            "cwd": "/path/to/project"
+        }
+
+        Debug with configuration:
         {"file": "tests/test_app.py", "configuration": "pytest: current file"}
     """
     ide = await get_ide_server()
-    result = await ide.start_debug_session(file, configuration, breakpoints, args)
+    result = await ide.start_debug_session(
+        file, module, configuration, breakpoints, args, env, cwd, stop_on_entry, just_my_code
+    )
     return _to_dict(result)
 
 

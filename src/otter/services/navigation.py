@@ -133,8 +133,20 @@ class NavigationService:
 
         def_line_text = lines[def_line - 1].strip()
 
-        # Extract symbol name and type from the definition line
-        symbol_name, symbol_type = self._parse_symbol_info(def_line_text)
+        # 🎯 100% Language-agnostic: Get ALL info from LSP!
+        # The LSP knows the language and provides:
+        # - Symbol name and type
+        # - Signature (for functions/methods)
+        # - Documentation/docstring
+        # No text parsing needed!
+        symbol_info = await self._get_complete_symbol_info_from_lsp(
+            def_file, def_line, def_column, def_line_text
+        )
+        
+        symbol_name = symbol_info['name']
+        symbol_type = symbol_info['type']
+        signature = symbol_info.get('signature')
+        docstring = symbol_info.get('docstring')
 
         # Get context lines (3 before, 3 after) with line numbers
         context_start = max(0, def_line - 4)
@@ -143,12 +155,6 @@ class NavigationService:
             f"{context_start + i + 1}|{line.rstrip()}"
             for i, line in enumerate(lines[context_start:context_end])
         ]
-
-        # Try to extract docstring (next few lines if they're comments/docstrings)
-        docstring = self._extract_docstring(lines, def_line)
-
-        # Try to extract signature (for functions/methods)
-        signature = self._extract_signature(lines, def_line)
 
         # Make file path relative to project if possible
         try:
@@ -177,26 +183,382 @@ class NavigationService:
             parsed = urlparse(uri)
             return unquote(parsed.path)
         return uri
+    
+    async def _get_symbol_info_from_lsp(
+        self, file: str, line: int, column: int, fallback_line_text: str
+    ) -> tuple[
+        str, Literal["function", "class", "variable", "module", "method", "property", "struct"]
+    ]:
+        """Get symbol information using LSP (backward compatibility wrapper).
+        
+        This is a simplified version of _get_complete_symbol_info_from_lsp
+        that only returns name and type for backward compatibility.
+        
+        New code should use _get_complete_symbol_info_from_lsp instead.
+        
+        Args:
+            file: File path
+            line: Line number (1-indexed)
+            column: Column position
+            fallback_line_text: Unused (kept for API compatibility)
+            
+        Returns:
+            Tuple of (symbol_name, symbol_type)
+            
+        Raises:
+            RuntimeError: If LSP server unavailable or no symbol at position
+        """
+        info = await self._get_complete_symbol_info_from_lsp(file, line, column, fallback_line_text)
+        return info['name'], info['type']
+    
+    def _parse_hover_text(
+        self, hover_text: str, fallback_line_text: str
+    ) -> Optional[tuple[str, Literal["function", "class", "variable", "module", "method", "property", "struct"]]]:
+        """Extract symbol info from LSP hover text.
+        
+        LSP hover typically includes markdown with code blocks that show
+        the symbol definition in a language-agnostic way.
+        """
+        # Look for markdown code blocks (```language\ncode\n```)
+        code_block_match = re.search(r'```(?:\w+)?\n(.+?)```', hover_text, re.DOTALL)
+        if code_block_match:
+            code = code_block_match.group(1).strip()
+            
+            # Parse the code block (which is usually the symbol definition)
+            # This is more reliable than parsing the raw source
+            
+            # Class/struct
+            if re.search(r'\b(?:class|struct)\s+(\w+)', code):
+                match = re.search(r'\b(?:class|struct)\s+(\w+)', code)
+                name = match.group(1)
+                symbol_type = "struct" if "struct" in code else "class"
+                return (name, symbol_type)
+            
+            # Function
+            if re.search(r'\b(?:function|fn|def)\s+(\w+)', code):
+                match = re.search(r'\b(?:function|fn|def)\s+(\w+)', code)
+                return (match.group(1), "function")
+            
+            # Method (has 'this', 'self', or is indented/in a class context)
+            if any(keyword in code for keyword in ['(this', '(self', 'self.', 'this.']):
+                match = re.search(r'(?:function|fn|def)\s+(\w+)', code)
+                if match:
+                    return (match.group(1), "method")
+                # Try extracting method name without keywords
+                match = re.search(r'(\w+)\s*\(', code)
+                if match:
+                    return (match.group(1), "method")
+            
+            # Variable/constant
+            if re.search(r'\b(?:const|let|var)\s+(\w+)', code):
+                match = re.search(r'\b(?:const|let|var)\s+(\w+)', code)
+                return (match.group(1), "variable")
+        
+        # If no code block, try to extract from plain text
+        # Look for patterns like "class User" or "function createUser"
+        type_match = re.search(r'\b(class|struct|function|fn|def|const|let|var)\s+(\w+)', hover_text)
+        if type_match:
+            type_keyword, name = type_match.groups()
+            if type_keyword in ('class',):
+                return (name, "class")
+            elif type_keyword in ('struct',):
+                return (name, "struct")
+            elif type_keyword in ('function', 'fn', 'def'):
+                return (name, "function")
+            elif type_keyword in ('const', 'let', 'var'):
+                return (name, "variable")
+        
+        return None
+
+    async def _get_complete_symbol_info_from_lsp(
+        self, file: str, line: int, column: int, fallback_line_text: str
+    ) -> Dict[str, Any]:
+        """Get complete symbol information from LSP (name, type, signature, docstring).
+        
+        This is the 100% language-agnostic way to get ALL symbol info at once!
+        The LSP knows the language and provides rich semantic information.
+        
+        Args:
+            file: File path
+            line: Line number (1-indexed)
+            column: Column position
+            fallback_line_text: Text to parse if LSP unavailable
+            
+        Returns:
+            Dict with keys: name, type, signature (Optional), docstring (Optional)
+        """
+        result = {
+            'name': 'unknown',
+            'type': 'variable',
+            'signature': None,
+            'docstring': None,
+        }
+        
+        try:
+            # Get hover information - this contains signature + docstring
+            hover_result = await self.nvim_client.lsp_hover(file, line, column)
+            
+            if hover_result and 'contents' in hover_result:
+                contents = hover_result['contents']
+                
+                # Extract hover text
+                hover_text = ""
+                if isinstance(contents, str):
+                    hover_text = contents
+                elif isinstance(contents, dict):
+                    hover_text = contents.get('value', '')
+                elif isinstance(contents, list) and len(contents) > 0:
+                    if isinstance(contents[0], str):
+                        hover_text = contents[0]
+                    elif isinstance(contents[0], dict):
+                        hover_text = contents[0].get('value', '')
+                
+                if hover_text:
+                    # Parse signature and docstring from hover
+                    parsed = self._parse_complete_hover_info(hover_text)
+                    result.update(parsed)
+        
+        except Exception:
+            pass
+        
+        try:
+            # Get symbol name and type from document symbols (most accurate for name/type)
+            symbols = await self.nvim_client.lsp_document_symbols(file)
+            
+            if symbols:
+                symbol = self._find_symbol_at_position(symbols, line, column)
+                if symbol:
+                    result['name'] = symbol.get('name', result['name'])
+                    kind = symbol.get('kind')
+                    result['type'] = self._lsp_kind_to_type(kind)
+        
+        except Exception as e:
+            # If we got some info from hover, return partial data
+            if result['name'] != 'unknown':
+                return result
+            
+            # Otherwise, raise descriptive exception
+            raise RuntimeError(
+                f"Unable to get symbol information at {file}:{line}:{column}. "
+                f"LSP server may not be running or the position may not contain a symbol. "
+                f"Error: {str(e)}"
+            )
+        
+        # If we still don't have a name, raise descriptive exception
+        if result['name'] == 'unknown':
+            raise RuntimeError(
+                f"No symbol found at {file}:{line}:{column}. "
+                f"The position may be between symbols or in whitespace. "
+                f"LSP hover and documentSymbol both returned no results."
+            )
+        
+        return result
+
+    def _parse_complete_hover_info(self, hover_text: str) -> Dict[str, Any]:
+        """Parse LSP hover text to extract signature and docstring.
+        
+        LSP hover typically returns markdown like:
+        ```python
+        def create_user(name: str, email: str) -> User
+        ```
+        Creates a new user with the given name and email.
+        
+        Returns:
+            Dict with name, type, signature, docstring
+        """
+        result = {
+            'name': None,
+            'type': None,
+            'signature': None,
+            'docstring': None,
+        }
+        
+        # Extract code blocks (usually contain signature)
+        code_block_match = re.search(r'```(?:\w+)?\n(.+?)```', hover_text, re.DOTALL)
+        if code_block_match:
+            code = code_block_match.group(1).strip()
+            
+            # The first line of the code block is usually the signature
+            first_line = code.split('\n')[0].strip()
+            
+            # Detect function/method signatures
+            if any(keyword in code for keyword in ['def ', 'function ', 'fn ', '=>', 'func ']):
+                result['signature'] = first_line
+                result['type'] = 'function'
+                
+                # Extract function name
+                match = re.search(r'\b(?:def|function|fn|func)\s+(\w+)', first_line)
+                if match:
+                    result['name'] = match.group(1)
+                else:
+                    # Try method name without keyword (e.g., "greet()" in JavaScript)
+                    match = re.search(r'(\w+)\s*\(', first_line)
+                    if match:
+                        result['name'] = match.group(1)
+            
+            # Detect class/struct signatures
+            elif any(keyword in code for keyword in ['class ', 'struct ', 'interface ']):
+                result['signature'] = first_line
+                result['type'] = 'class' if 'class' in code else 'struct'
+                
+                # Extract class/struct name
+                match = re.search(r'\b(?:class|struct|interface)\s+(\w+)', first_line)
+                if match:
+                    result['name'] = match.group(1)
+            
+            # Extract docstring (text after code block)
+            text_after_code = hover_text.split('```', 2)
+            if len(text_after_code) > 2:
+                docstring = text_after_code[2].strip()
+                if docstring:
+                    # Clean up markdown formatting
+                    docstring = re.sub(r'\*\*(.+?)\*\*', r'\1', docstring)  # Bold
+                    docstring = re.sub(r'\*(.+?)\*', r'\1', docstring)  # Italic
+                    docstring = re.sub(r'`(.+?)`', r'\1', docstring)  # Inline code
+                    result['docstring'] = docstring
+        
+        return result
+
+    def _find_symbol_at_position(
+        self, symbols: List[Dict], target_line: int, target_column: int
+    ) -> Optional[Dict]:
+        """Find the symbol at a specific position (recursive, language-agnostic).
+        
+        LSP document symbols are hierarchical, so we need to search recursively
+        to find the most specific symbol at the given position.
+        
+        Args:
+            symbols: List of LSP document symbols
+            target_line: Line number (1-indexed)
+            target_column: Column number (0-indexed)
+            
+        Returns:
+            The symbol at the position, or None if not found
+        """
+        for symbol in symbols:
+            # Check if the symbol range contains our position
+            symbol_range = symbol.get('range', {})
+            start = symbol_range.get('start', {})
+            end = symbol_range.get('end', {})
+            
+            start_line = start.get('line', -1) + 1  # Convert to 1-indexed
+            start_col = start.get('character', -1)
+            end_line = end.get('line', -1) + 1
+            end_col = end.get('character', -1)
+            
+            # Check if position is within range
+            if start_line <= target_line <= end_line:
+                # Check column bounds
+                if target_line == start_line and target_column < start_col:
+                    continue
+                if target_line == end_line and target_column > end_col:
+                    continue
+                
+                # Position is within this symbol's range
+                # Check if there's a more specific child symbol
+                children = symbol.get('children', [])
+                if children:
+                    child_symbol = self._find_symbol_at_position(children, target_line, target_column)
+                    if child_symbol:
+                        return child_symbol
+                
+                # No more specific symbol, return this one
+                return symbol
+        
+        return None
+
+    def _lsp_kind_to_type(
+        self, kind: Optional[int]
+    ) -> Literal["function", "class", "variable", "module", "method", "property", "struct"]:
+        """Convert LSP SymbolKind to our symbol type (language-agnostic).
+        
+        LSP SymbolKind enumeration is standardized across all languages:
+        https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#symbolKind
+        
+        Args:
+            kind: LSP SymbolKind integer
+            
+        Returns:
+            Our symbol type string
+        """
+        if kind is None:
+            return "variable"
+        
+        # LSP SymbolKind enumeration
+        kind_map = {
+            1: "module",      # File
+            2: "module",      # Module
+            3: "module",      # Namespace
+            4: "module",      # Package
+            5: "class",       # Class
+            6: "method",      # Method
+            7: "property",    # Property
+            8: "variable",    # Field
+            9: "function",    # Constructor
+            10: "function",   # Enum
+            11: "function",   # Interface
+            12: "function",   # Function
+            13: "variable",   # Variable
+            14: "variable",   # Constant
+            15: "variable",   # String
+            16: "variable",   # Number
+            17: "variable",   # Boolean
+            18: "variable",   # Array
+            19: "variable",   # Object
+            20: "variable",   # Key
+            21: "variable",   # Null
+            22: "variable",   # EnumMember
+            23: "struct",     # Struct
+            24: "variable",   # Event
+            25: "function",   # Operator
+            26: "variable",   # TypeParameter
+        }
+        
+        return kind_map.get(kind, "variable")
+
+    # ========================================================================
+    # DEPRECATED METHODS - NO LONGER USED
+    # ========================================================================
+    # The following methods used language-specific text parsing and have been
+    # replaced with LSP-first approach. They are kept for backward compatibility
+    # but should not be used in new code.
+    # ========================================================================
 
     def _parse_symbol_info(
         self, line: str
     ) -> tuple[
-        str, Literal["function", "class", "variable", "module", "method", "property"]
+        str, Literal["function", "class", "variable", "module", "method", "property", "struct"]
     ]:
         """Extract symbol name and type from definition line.
+        
+        Language-agnostic parser supporting Python, JavaScript, Rust, and more.
 
         Returns:
             Tuple of (symbol_name, symbol_type)
         """
         line = line.strip()
 
-        # Class definition
+        # Python class definition
         if line.startswith("class "):
             match = re.match(r"class\s+(\w+)", line)
             if match:
                 return match.group(1), "class"
 
-        # Function/method definition
+        # JavaScript/TypeScript class definition
+        # Matches: class User {, export class User {, export default class User {
+        if re.match(r"(?:export\s+(?:default\s+)?)?class\s+\w+", line):
+            match = re.search(r"class\s+(\w+)", line)
+            if match:
+                return match.group(1), "class"
+
+        # Rust struct definition
+        # Matches: pub struct User {, struct User {
+        if re.match(r"(?:pub\s+)?struct\s+\w+", line):
+            match = re.search(r"struct\s+(\w+)", line)
+            if match:
+                return match.group(1), "struct"
+
+        # Python function/method definition
         if line.startswith("def ") or line.startswith("async def "):
             match = re.match(r"(?:async\s+)?def\s+(\w+)", line)
             if match:
@@ -206,9 +568,55 @@ class NavigationService:
                     return name, "method"
                 return name, "function"
 
-        # Variable/constant
+        # JavaScript/TypeScript function definition
+        # Matches: function createUser(, async function createUser(, export function createUser(
+        if re.match(r"(?:export\s+)?(?:async\s+)?function\s+\w+", line):
+            match = re.search(r"function\s+(\w+)", line)
+            if match:
+                return match.group(1), "function"
+
+        # JavaScript method definition (within class)
+        # Matches: greet() {, async greet() {, constructor(
+        if re.match(r"(?:async\s+)?(\w+)\s*\(", line) and not line.startswith("function"):
+            match = re.match(r"(?:async\s+)?(\w+)\s*\(", line)
+            if match:
+                return match.group(1), "method"
+
+        # Rust function definition
+        # Matches: pub fn create_user(, fn create_user(, pub async fn create_user(
+        if re.match(r"(?:pub\s+)?(?:async\s+)?fn\s+\w+", line):
+            match = re.search(r"fn\s+(\w+)", line)
+            if match:
+                # Check if it's in an impl block (method) or standalone (function)
+                # This is a heuristic - we can't easily tell from a single line
+                return match.group(1), "function"
+
+        # JavaScript arrow function or const function
+        # Matches: const createUser = (, const createUser = async (
+        if re.match(r"const\s+(\w+)\s*=\s*(?:async\s*)?\(", line):
+            match = re.match(r"const\s+(\w+)", line)
+            if match:
+                return match.group(1), "function"
+
+        # JavaScript module.exports - extract the first exported symbol
+        # Matches: module.exports = { User, createUser }, exports.User = User
+        if "module.exports" in line or line.startswith("exports."):
+            # Try to extract from destructured export: { User, ... }
+            match = re.search(r"\{\s*(\w+)", line)
+            if match:
+                # Return the first symbol in the export
+                # Note: This is a heuristic - the LSP should ideally give us the exact position
+                return match.group(1), "class"  # Assume exported items are important (class/function)
+            # Try exports.Name = ...
+            match = re.match(r"exports\.(\w+)", line)
+            if match:
+                return match.group(1), "variable"
+
+        # Variable/constant (Python, JavaScript, Rust)
+        # Matches: user = User(, const user = new User(, let user = User::new(
         if "=" in line:
-            match = re.match(r"(\w+)\s*=", line)
+            # Try to match the variable name before =
+            match = re.match(r"(?:const|let|var|pub\s+const)?\s*(\w+)\s*=", line)
             if match:
                 return match.group(1), "variable"
 
@@ -269,6 +677,10 @@ class NavigationService:
                 return match.group(1).strip()
 
         return None
+
+    # ========================================================================
+    # END OF DEPRECATED METHODS
+    # ========================================================================
 
     async def find_references(
         self,
@@ -410,7 +822,7 @@ class NavigationService:
         )
 
     def _detect_reference_type(self, context_line: str, symbol: str) -> Optional[str]:
-        """Detect the type of reference based on context.
+        """Detect the type of reference based on context (language-agnostic).
 
         Args:
             context_line: The line of code containing the reference
@@ -421,20 +833,33 @@ class NavigationService:
         """
         context_stripped = context_line.strip()
 
-        # Check for imports
-        if any(keyword in context_stripped for keyword in ["import ", "from ", "require(", "use "]):
+        # Language-agnostic patterns for imports
+        # Most languages use some form of import/from/require/use/include
+        import_patterns = [
+            r'\bimport\b',      # Python, JavaScript, TypeScript, Java, Rust
+            r'\bfrom\b',        # Python, JavaScript, TypeScript
+            r'\brequire\b',     # Node.js, Ruby
+            r'\buse\b',         # Rust, PHP
+            r'\binclude\b',     # C, C++, PHP
+            r'\bimport_module\b',  # Erlang
+        ]
+        if any(re.search(pattern, context_stripped) for pattern in import_patterns):
             return "import"
 
-        # Check for type hints/annotations
-        if any(marker in context_stripped for marker in [": ", "-> ", "<", "extends ", "implements "]):
-            # More sophisticated check: see if symbol appears in type position
-            # This is a heuristic and may need refinement
-            if re.search(rf":\s*{re.escape(symbol)}\b", context_stripped) or \
-               re.search(rf"->\s*{re.escape(symbol)}\b", context_stripped) or \
-               re.search(rf"<{re.escape(symbol)}>", context_stripped):
-                return "type_hint"
+        # Language-agnostic patterns for type hints/annotations
+        # Look for symbol in type position (after :, ->, <>, implements, extends, etc.)
+        type_patterns = [
+            rf":\s*{re.escape(symbol)}\b",           # Python, TypeScript: var: Type
+            rf"->\s*{re.escape(symbol)}\b",          # Python, Rust: -> Type
+            rf"<\s*{re.escape(symbol)}\s*>",         # Java, TypeScript, Rust: List<Type>
+            rf"\bextends\s+{re.escape(symbol)}\b",   # Java, TypeScript: class X extends Y
+            rf"\bimplements\s+{re.escape(symbol)}\b", # Java, TypeScript: class X implements Y
+            rf"\bas\s+{re.escape(symbol)}\b",        # TypeScript: import { X as Y }
+        ]
+        if any(re.search(pattern, context_stripped) for pattern in type_patterns):
+            return "type_hint"
 
-        # Default to usage
+        # Default to usage (function call, variable use, etc.)
         return "usage"
 
     async def search(

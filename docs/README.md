@@ -6,12 +6,13 @@ This directory contains comprehensive documentation for Otter - the IDE for AI a
 
 ## 📚 Documentation Structure
 
-### For Users (3 documents)
+### For Users (4 documents)
 
 | Document | Purpose | Audience |
 |----------|---------|----------|
 | **[../README.md](../README.md)** | Quick start, installation, overview | Everyone |
 | **[USER_GUIDE.md](USER_GUIDE.md)** | Complete tool reference and usage | Users, Integrators |
+| **[CONFIGURATION.md](CONFIGURATION.md)** | Configure LSP/DAP for your project | Users, DevOps |
 | **[DEPENDENCIES.md](DEPENDENCIES.md)** | System requirements and setup | Users, DevOps |
 
 ### For Contributors (4 documents)
@@ -37,7 +38,8 @@ This directory contains comprehensive documentation for Otter - the IDE for AI a
 ### Getting Started
 1. **[../README.md](../README.md)** - Start here for installation
 2. **[DEPENDENCIES.md](DEPENDENCIES.md)** - Install system dependencies
-3. **[USER_GUIDE.md](USER_GUIDE.md)** - Learn how to use Otter
+3. **[CONFIGURATION.md](CONFIGURATION.md)** - Configure for your project (optional)
+4. **[USER_GUIDE.md](USER_GUIDE.md)** - Learn how to use Otter
 
 ### Using Otter
 - **[USER_GUIDE.md](USER_GUIDE.md)** - All 15 tools with examples
@@ -80,6 +82,17 @@ This directory contains comprehensive documentation for Otter - the IDE for AI a
 - Language support
 - Integration examples
 - Troubleshooting
+
+### CONFIGURATION.md
+**What**: Configure LSP and DAP for your project  
+**When to read**: Customizing Otter for your specific setup  
+**Key sections**:
+- `.otter.toml` configuration file format
+- Auto-detection and lazy loading
+- Per-language LSP/DAP configuration
+- Template variables (${VENV}, ${PROJECT_ROOT})
+- Common configurations by project type
+- Examples and troubleshooting
 
 ### DEPENDENCIES.md
 **What**: System dependency requirements and installation  
@@ -149,7 +162,8 @@ This directory contains comprehensive documentation for Otter - the IDE for AI a
 ### "I want to use Otter"
 1. [../README.md](../README.md) - Installation and quick start
 2. [DEPENDENCIES.md](DEPENDENCIES.md) - Install dependencies
-3. [USER_GUIDE.md](USER_GUIDE.md) - Tool reference
+3. [CONFIGURATION.md](CONFIGURATION.md) - Configure for your project
+4. [USER_GUIDE.md](USER_GUIDE.md) - Tool reference
 
 ### "I want to understand how it works"
 1. [ARCHITECTURE.md](ARCHITECTURE.md) - High-level design
@@ -200,11 +214,11 @@ This directory contains comprehensive documentation for Otter - the IDE for AI a
 
 | Category | Documents | Purpose |
 |----------|-----------|---------|
-| User Docs | 3 | Using Otter |
+| User Docs | 4 | Using Otter |
 | Contributor Docs | 4 | Development & roadmap |
 | Project Docs | 2 | Testing & history |
 | Index | 2 | Navigation (this file + README) |
-| **Total** | **11** | **Focused, consolidated** |
+| **Total** | **12** | **Focused, consolidated** |
 
 ---
 

@@ -59,3 +59,6 @@ tmp/
 # Generated documentation
 site/
 .cache/
+
+# Auto-generated Neovim config (regenerated each run)
+configs/runtime_config.lua

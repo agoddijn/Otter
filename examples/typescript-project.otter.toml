@@ -1,0 +1,19 @@
+# Example Otter configuration for a TypeScript/JavaScript project
+# Copy this to your project root as .otter.toml
+
+[lsp.typescript]
+enabled = true
+server = "tsserver"
+
+[lsp.javascript]
+enabled = true
+server = "tsserver"
+
+[dap.typescript]
+enabled = true
+adapter = "node2"
+
+[dap.javascript]
+enabled = true
+adapter = "node2"
+

@@ -1,0 +1,19 @@
+# Example Otter configuration for a Python project
+# Copy this to your project root as .otter.toml
+
+[lsp.python]
+enabled = true
+server = "pyright"
+# Use virtualenv if available
+python_path = "${VENV}/bin/python"
+
+[lsp.python.settings]
+python.analysis.typeCheckingMode = "basic"
+python.analysis.autoSearchPaths = true
+python.analysis.useLibraryCodeForTypes = true
+
+[dap.python]
+enabled = true
+adapter = "debugpy"
+python_path = "${VENV}/bin/python"
+

@@ -46,6 +46,47 @@ We do **NOT** reimplement shell features:
 - Read files with diagnostics inline
 - Context-aware line range reading
 
+## Configuration
+
+**🚀 Batteries Included!** Otter automatically installs missing LSP servers on first run. No manual setup required!
+
+For custom configuration, create a `.otter.toml` file at your project root:
+
+```toml
+# Point to your virtualenv
+[lsp.python]
+python_path = "${VENV}/bin/python"
+server = "pyright"
+
+[lsp.python.settings]
+python.analysis.typeCheckingMode = "strict"
+
+# Control auto-installation
+[lsp]
+auto_install = true  # Install missing LSP servers automatically
+```
+
+**Benefits:**
+- 🔋 **Zero setup** - Auto-installs missing LSP servers (pyright, tsserver, rust-analyzer, etc.)
+- 🚀 **Lightweight** - Only loads LSPs for languages you use
+- ⚡ **Lazy loading** - LSPs start when you open files (configurable)
+- 🎯 **Configurable** - Point to specific Python versions, choose language servers
+- 🔍 **Auto-detect** - Works out of the box without configuration
+
+**First-run experience:**
+```
+🔍 Checking LSP servers...
+⚠️  javascript: typescript-language-server is not installed
+
+📦 Installing 1 missing LSP server(s)...
+   (This may take a minute on first run)
+
+📦 Installing typescript-language-server...
+✅ Successfully installed typescript-language-server
+```
+
+See [Configuration Guide](./docs/CONFIGURATION.md) for details and examples.
+
 ## Quick Start
 
 ### System Requirements
@@ -342,6 +383,7 @@ See [ARCHITECTURE.md](./docs/ARCHITECTURE.md) for detailed architectural documen
 ### User Documentation
 - **[README.md](./README.md)** - This file (quick start and overview)
 - **[User Guide](./docs/USER_GUIDE.md)** - Complete tool reference and usage
+- **[Configuration Guide](./docs/CONFIGURATION.md)** - Configure LSP/DAP for your project
 - **[Dependencies](./docs/DEPENDENCIES.md)** - System requirements and installation
 
 ### Developer Documentation
