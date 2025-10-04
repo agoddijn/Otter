@@ -23,6 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed programmatic examples (not needed for MCP consumption)
 - Increased LSP readiness timeouts for CI environments (45s vs 15s locally)
 - Auto-enable verbose LSP logging in CI for better debugging
+- Consolidated integration tests: 18 files (4911 lines) → 6 files (2428 lines)
+  - Merged navigation tests (4 files → 1)
+  - Merged debugging tests (6 files → 1)
+  - Merged workspace tests (3 files → 1)
+  - Merged infrastructure tests (3 files → 1)
+  - Removed duplicate fixtures and arbitrary delays
+  - Better organized by feature domain
+- Consolidated unit tests: 7 files (1680 lines) → 4 files (1269 lines)
+  - Merged workspace tests (3 files → 1)
+  - Removed duplicate test patterns
 
 ### Fixed
 - 74 linting issues (unused imports, f-strings, bare excepts, etc.)
