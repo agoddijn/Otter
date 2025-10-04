@@ -1,18 +1,27 @@
 # Configuration Guide
 
-Otter IDE can be configured via a `.otter.toml` file at your project root. This allows you to:
-
-- Specify which LSP servers to use
-- Point to specific Python/Node.js interpreters
-- Configure DAP debug adapters
-- Control lazy loading and performance settings
+Otter works **without configuration** for most projects. However, you can customize behavior with a `.otter.toml` file at your project root.
 
 ## Quick Start
 
-Create a `.otter.toml` file at your project root:
+### Zero Configuration (Recommended)
 
+For most projects, just run Otter - it will:
+- Auto-detect languages in your project
+- Find your virtual environments automatically
+- Install missing LSP servers
+- Use sensible defaults
+
+### Custom Configuration
+
+Create `.otter.toml` at your project root when you need to:
+- Specify explicit Python/Node.js interpreter paths
+- Configure LSP server settings
+- Set up debugging configurations
+- Tune performance for large projects
+
+**Minimal example**:
 ```toml
-# Minimal Python project configuration
 [lsp.python]
 python_path = "${VENV}/bin/python"
 server = "pyright"
@@ -21,46 +30,58 @@ server = "pyright"
 python.analysis.typeCheckingMode = "strict"
 ```
 
-That's it! Otter will:
-- Auto-detect languages in your project
-- Load only the LSPs you need
-- Use lazy loading by default (LSPs start when you open files)
+## Configuration File Location
 
-## Configuration Locations
+Otter looks for `.otter.toml` at your project root (the path specified by `IDE_PROJECT_PATH`).
 
-Otter looks for `.otter.toml` at your project root (the path you specify via `IDE_PROJECT_PATH`).
+## Complete Examples
 
-## Complete Example
+See [examples/](../examples/) directory for full configuration examples:
+- **python-project.otter.toml** - Python with venv
+- **typescript-project.otter.toml** - TypeScript/JavaScript
+- **fullstack-project.otter.toml** - Multi-language monorepo
 
-See [`.otter.toml.example`](../.otter.toml.example) for a fully commented example with all options.
+## Language Configuration
 
-## Common Configurations
-
-### Python Project with Virtual Environment
+### Python
 
 ```toml
 [lsp.python]
 enabled = true
-server = "pyright"
+server = "pyright"  # or "pylsp", "ruff_lsp"
 python_path = "${VENV}/bin/python"
 
 [lsp.python.settings]
-python.analysis.typeCheckingMode = "basic"
+python.analysis.typeCheckingMode = "basic"  # "off", "basic", "standard", "strict"
+python.analysis.autoSearchPaths = true
+python.analysis.useLibraryCodeForTypes = true
 
-[dap.python]
-python_path = "${VENV}/bin/python"
+# Optional: exclude paths
+# python.analysis.exclude = ["**/node_modules", "**/__pycache__"]
 ```
 
-### TypeScript Project with Custom Node Path
+**Available servers**:
+- `pyright` (recommended) - Microsoft's fast type checker
+- `pylsp` - Community-driven, plugin-based
+- `ruff_lsp` - Ruff linter as LSP
+
+### TypeScript / JavaScript
 
 ```toml
 [lsp.typescript]
 enabled = true
 server = "tsserver"
-node_path = "/usr/local/bin/node"
+
+[lsp.typescript.settings]
+typescript.suggest.autoImports = true
+typescript.updateImportsOnFileMove.enabled = "always"
+
+[lsp.javascript]
+enabled = true
+server = "tsserver"
 ```
 
-### Rust Project
+### Rust
 
 ```toml
 [lsp.rust]
@@ -70,108 +91,155 @@ server = "rust_analyzer"
 [lsp.rust.settings]
 rust-analyzer.cargo.features = "all"
 rust-analyzer.checkOnSave.command = "clippy"
+rust-analyzer.cargo.allFeatures = true
 ```
 
-### Monorepo with Multiple Languages
+### Go
 
 ```toml
-[lsp]
-# Explicitly list languages instead of auto-detect
-languages = ["python", "typescript", "go"]
+[lsp.go]
+enabled = true
+server = "gopls"
 
+[lsp.go.settings]
+gopls.analyses = { unusedparams = true }
+```
+
+## Runtime Detection
+
+Otter automatically detects your project's runtime environment:
+
+### Python Virtual Environments
+
+Auto-detected patterns (in order):
+1. `.venv/` (recommended)
+2. `venv/`
+3. `env/`
+4. `virtualenv/`
+
+Use `${VENV}` variable to reference auto-detected venv:
+```toml
+[lsp.python]
+python_path = "${VENV}/bin/python"
+```
+
+Or specify explicit path:
+```toml
 [lsp.python]
 python_path = "backend/.venv/bin/python"
-
-[lsp.typescript]
-# Uses default settings
-
-[lsp.go]
-server = "gopls"
+# or absolute:
+python_path = "/usr/local/bin/python3.11"
 ```
 
-### Disable Specific Languages
+### Node.js Versions
 
-```toml
-[lsp]
-# Auto-detect all languages
-auto_detect = true
-# But exclude these
-disabled_languages = ["javascript"]
+Auto-detected from:
+1. `.nvmrc` file
+2. `package.json` `engines.node` field
+3. System Node.js
 
-# Or be explicit about what to enable
-# languages = ["python", "typescript"]
-```
+### Rust Toolchains
+
+Auto-detected from:
+1. `rust-toolchain.toml`
+2. `rust-toolchain` file
+3. System Rust installation
 
 ## Template Variables
 
-Otter supports template variables in path configurations:
+Use these variables in configuration paths:
 
-- `${PROJECT_ROOT}` - Absolute path to project root
-- `${VENV}` - Auto-detected virtualenv path (`.venv`, `venv`, `env`, `.env`)
+- **`${VENV}`** - Auto-detected Python virtual environment
+- **`${PROJECT_ROOT}`** - Absolute path to project root
 
 Example:
 ```toml
 [lsp.python]
-# These are equivalent if you have a .venv directory
 python_path = "${VENV}/bin/python"
-python_path = "${PROJECT_ROOT}/.venv/bin/python"
+
+[lsp.python.settings]
+python.analysis.extraPaths = ["${PROJECT_ROOT}/src"]
 ```
 
-## Auto-Detection
+## Multi-Language Projects (Monorepos)
 
-By default, Otter:
-
-1. **Scans your project** for language files (`.py`, `.js`, `.ts`, `.rs`, `.go`)
-2. **Loads only necessary LSPs** based on detected files
-3. **Uses lazy loading** - LSPs start when you open a file of that type
-
-You can control this:
+For projects with multiple languages:
 
 ```toml
 [lsp]
-# Disable auto-detection and use explicit list
-auto_detect = false
-languages = ["python"]
+# Explicitly list languages (better performance than auto-detect)
+languages = ["python", "typescript", "javascript"]
 
-# Or disable lazy loading (start all LSPs immediately)
-lazy_load = false
+[lsp.python]
+# Backend with its own venv
+python_path = "backend/.venv/bin/python"
+
+[lsp.typescript]
+# Frontend configuration
+# Uses system Node.js or .nvmrc if present
+
+[lsp.javascript]
+enabled = true
+
+[performance]
+# Limit concurrent LSP servers
+max_lsp_clients = 3
+```
+
+## Debug Adapter Configuration (DAP)
+
+Configure debugging for your languages:
+
+### Python Debugging
+
+```toml
+[dap.python]
+enabled = true
+adapter = "debugpy"
+python_path = "${VENV}/bin/python"
+
+# Optional: environment variables for debug sessions
+[dap.python.env]
+DEBUG = "true"
+LOG_LEVEL = "debug"
+```
+
+### TypeScript / JavaScript Debugging
+
+```toml
+[dap.typescript]
+enabled = true
+adapter = "node2"  # or "pwa-node" for browser debugging
+
+[dap.javascript]
+enabled = true
+adapter = "node2"
+```
+
+### Rust Debugging
+
+```toml
+[dap.rust]
+enabled = true
+adapter = "codelldb"
 ```
 
 ## Auto-Installation of LSP Servers
 
-**🚀 NEW: Batteries Included!**
-
-Otter now automatically installs missing LSP servers on first startup. No manual setup required!
+By default, Otter automatically installs missing LSP servers:
 
 ```toml
 [lsp]
-# Auto-install missing LSP servers (default: true)
-auto_install = true
+auto_install = true  # default
 ```
 
-**What happens on startup:**
-1. Otter checks which languages your project uses
-2. Verifies if the needed LSP servers are installed
-3. Automatically installs any missing servers
-4. Shows progress with clear messages
-
-**Example startup output:**
+**First-run experience**:
 ```
 🔍 Checking LSP servers...
-✅ python: pyright is installed
-⚠️  javascript: typescript-language-server is not installed
-⚠️  rust: rust-analyzer is not installed
+⚠️  typescript-language-server not installed
 
-📦 Installing 2 missing LSP server(s)...
-   (This may take a minute on first run)
-
-📦 Installing typescript-language-server...
-   Command: npm install -g typescript typescript-language-server
+📦 Installing missing LSP servers...
 ✅ Successfully installed typescript-language-server
-
-📦 Installing rust-analyzer...
-   Command: rustup component add rust-analyzer
-✅ Successfully installed rust-analyzer
 ```
 
 **Disable auto-install** if you prefer manual control:
@@ -180,72 +248,48 @@ auto_install = true
 auto_install = false
 ```
 
-**Prerequisites:**
+**Prerequisites** (for auto-install):
 - `npm` - For JavaScript/TypeScript servers
-- `pip` - For Python servers
+- `pip` - For Python servers  
 - `rustup` - For Rust server
 - `go` - For Go server
 
-If a prerequisite is missing, Otter will show installation instructions.
-
-## Language-Specific LSP Servers
-
-### Python
-Available servers:
-- `pyright` (default) - Microsoft's type checker
-- `pylsp` - Python LSP server
-- `ruff_lsp` - Ruff linter as LSP
-
-```toml
-[lsp.python]
-server = "pyright"  # or "pylsp", "ruff_lsp"
-```
-
-### JavaScript/TypeScript
-- `tsserver` (only option, default)
-
-### Rust
-- `rust_analyzer` (only option, default)
-
-### Go
-- `gopls` (only option, default)
-
-## DAP Configuration
-
-Debug adapter configuration follows the same pattern as LSP:
-
-```toml
-[dap.python]
-enabled = true
-adapter = "debugpy"
-python_path = "${VENV}/bin/python"
-
-# Custom debug configurations
-[[dap.python.configurations]]
-name = "Launch with args"
-type = "python"
-request = "launch"
-program = "${file}"
-args = ["--verbose", "--debug"]
-```
-
 ## Performance Tuning
+
+### Limit Concurrent LSP Clients
+
+For large monorepos:
 
 ```toml
 [performance]
-# Limit concurrent LSP clients (prevents resource exhaustion)
-max_lsp_clients = 5
+max_lsp_clients = 3  # default: 5
+max_dap_sessions = 2  # default: 3
+```
 
-# Limit concurrent debug sessions
-max_dap_sessions = 2
+### Control Loading Behavior
 
-# Debounce file changes (ms) before triggering LSP
-file_change_debounce_ms = 300
+```toml
+[lsp]
+# Disable auto-detection, use explicit list
+auto_detect = false
+languages = ["python", "typescript"]
+
+# Disable lazy loading (start all LSPs immediately)
+lazy_load = false  # default: true
+```
+
+### Disable Specific Languages
+
+```toml
+[lsp]
+# Auto-detect all languages except these
+disabled_languages = ["javascript", "markdown"]
+
+# Or be explicit about what to enable
+# languages = ["python", "typescript"]
 ```
 
 ## TreeSitter Configuration
-
-Control which TreeSitter parsers are installed:
 
 ```toml
 [plugins.treesitter]
@@ -253,7 +297,7 @@ Control which TreeSitter parsers are installed:
 ensure_installed = ["python", "javascript", "rust", "json", "yaml"]
 
 # Auto-install missing parsers
-auto_install = true
+auto_install = true  # default
 ```
 
 ## Disabling Features
@@ -263,50 +307,16 @@ auto_install = true
 enabled = false  # Disable all LSP
 
 [dap]
-enabled = false  # Disable all DAP
+enabled = false  # Disable all debugging
 
 [plugins]
 treesitter = false  # Disable TreeSitter
 ```
 
-## Configuration Precedence
+## Configuration by Project Type
 
-1. **`.otter.toml`** - Explicit configuration (highest priority)
-2. **Auto-detection** - If `auto_detect = true` and no explicit config
-3. **Defaults** - Built-in sensible defaults
+### Python Web App (Django/FastAPI)
 
-## Debugging Configuration Issues
-
-### Check what languages were detected:
-
-Otter logs to stderr when starting. Look for:
-```
-📁 Project: my-project
-🔍 Detected languages: python, javascript
-```
-
-### View effective configuration:
-
-Use the `project://info` resource in your MCP client to see the current project info and configuration.
-
-### Common Issues
-
-**LSP not starting?**
-- Check the server is installed (`pyright`, `rust-analyzer`, etc.)
-- Verify `python_path` or `node_path` if specified
-- Try disabling `lazy_load` to start LSPs immediately
-
-**Wrong Python interpreter?**
-- Use `python_path = "${VENV}/bin/python"` to point to your venv
-- Or use absolute path: `python_path = "/path/to/python"`
-
-**Too many LSPs starting?**
-- Use `disabled_languages = ["lang1", "lang2"]` to exclude
-- Or be explicit: `languages = ["python"]`
-
-## Examples by Project Type
-
-### Django Project
 ```toml
 [lsp.python]
 server = "pyright"
@@ -315,18 +325,28 @@ python_path = "${VENV}/bin/python"
 [lsp.python.settings]
 python.analysis.typeCheckingMode = "basic"
 python.analysis.extraPaths = ["${PROJECT_ROOT}"]
+
+[dap.python]
+enabled = true
+python_path = "${VENV}/bin/python"
 ```
 
-### React + TypeScript
+### React + TypeScript Frontend
+
 ```toml
 [lsp.typescript]
 server = "tsserver"
 
+[lsp.typescript.settings]
+typescript.suggest.autoImports = true
+typescript.preferences.importModuleSpecifier = "relative"
+
 [lsp.javascript]
-enabled = false  # Using TypeScript only
+enabled = false  # TypeScript-only project
 ```
 
-### Rust with Clippy
+### Rust CLI Tool
+
 ```toml
 [lsp.rust]
 server = "rust_analyzer"
@@ -334,20 +354,95 @@ server = "rust_analyzer"
 [lsp.rust.settings]
 rust-analyzer.checkOnSave.command = "clippy"
 rust-analyzer.cargo.allFeatures = true
+
+[dap.rust]
+enabled = true
+adapter = "codelldb"
 ```
 
 ### Go Microservice
+
 ```toml
 [lsp.go]
 server = "gopls"
 
 [lsp.go.settings]
-gopls.analyses = { unusedparams = true }
+gopls.analyses = { unusedparams = true, shadow = true }
+
+[dap.go]
+enabled = true
+adapter = "delve"
 ```
+
+### Full-Stack Monorepo
+
+See [examples/fullstack-project.otter.toml](../examples/fullstack-project.otter.toml) for a complete example.
+
+## Troubleshooting
+
+### LSP Server Not Starting
+
+**Check installation**:
+```bash
+# Python
+which pyright
+
+# TypeScript/JavaScript  
+which typescript-language-server
+
+# Rust
+which rust-analyzer
+```
+
+**Verify configuration**:
+```toml
+[lsp.python]
+enabled = true  # Make sure it's explicitly enabled
+python_path = "${VENV}/bin/python"  # Check path is correct
+```
+
+**Disable lazy loading** (for debugging):
+```toml
+[lsp]
+lazy_load = false  # Start all LSPs immediately
+```
+
+### Wrong Python Interpreter
+
+Check auto-detection:
+```
+🔍 Detecting Python runtime...
+✅ Found virtual environment: /path/to/.venv
+```
+
+Override if needed:
+```toml
+[lsp.python]
+python_path = "/path/to/specific/python"
+```
+
+### Too Many LSP Servers
+
+Limit what starts:
+```toml
+[lsp]
+languages = ["python", "typescript"]  # Only these
+# or
+disabled_languages = ["markdown", "json"]  # Exclude these
+
+[performance]
+max_lsp_clients = 3  # Hard limit
+```
+
+## Configuration Precedence
+
+1. **`.otter.toml`** - Explicit configuration (highest priority)
+2. **Auto-detection** - Runtime environment detection
+3. **Defaults** - Built-in sensible defaults
 
 ## Next Steps
 
-- See [`.otter.toml.example`](../.otter.toml.example) for all available options
-- Check [User Guide](./USER_GUIDE.md) for tool documentation
-- See [Technical Guide](./TECHNICAL_GUIDE.md) for architecture details
-
+- **Examples**: See [examples/](../examples/) for complete configurations
+- **Getting Started**: Read [GETTING_STARTED.md](./GETTING_STARTED.md) for installation
+- **Architecture**: Read [README.md](./README.md) for high-level overview
+- **Contributing**: Read [CONTRIBUTING.md](./CONTRIBUTING.md) to help improve Otter

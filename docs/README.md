@@ -1,243 +1,180 @@
-# Documentation Index
+# What is Otter?
 
-This directory contains comprehensive documentation for Otter - the IDE for AI agents.
+Otter is a **batteries-included, agent-first IDE** exposed over the Model Context Protocol (MCP). It provides AI agents with comprehensive code understanding, navigation, and debugging capabilities - without requiring heavy GUI-based IDEs.
 
----
+## Philosophy
 
-## 📚 Documentation Structure
+### Built for Agents, Not Humans
 
-### For Users (4 documents)
+Otter is designed from the ground up for **AI agents** that need to understand, write, and debug code. Unlike traditional IDEs built for human interaction, Otter provides:
 
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| **[../README.md](../README.md)** | Quick start, installation, overview | Everyone |
-| **[USER_GUIDE.md](USER_GUIDE.md)** | Complete tool reference and usage | Users, Integrators |
-| **[CONFIGURATION.md](CONFIGURATION.md)** | Configure LSP/DAP for your project | Users, DevOps |
-| **[DEPENDENCIES.md](DEPENDENCIES.md)** | System requirements and setup | Users, DevOps |
+- **Ergonomic MCP interface**: All capabilities exposed as simple tool calls
+- **No GUI overhead**: Lightweight, headless architecture
+- **Semantic understanding**: LSP and TreeSitter-powered intelligence
+- **Drop-in anywhere**: Works in any environment with Neovim
 
-### For Contributors (4 documents)
+### Batteries Included
 
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| **[CONTRIBUTING.md](CONTRIBUTING.md)** | How to contribute, code patterns, testing | Contributors |
-| **[ARCHITECTURE.md](ARCHITECTURE.md)** | High-level design and decisions | Developers |
-| **[TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md)** | Neovim, LSP, TreeSitter, DAP details | Developers |
-| **[ROADMAP.md](ROADMAP.md)** | Planned tools and features by priority | Contributors, Users |
+Otter handles the complexity so agents don't have to:
 
-### Project Documentation (2 documents)
+- **Auto-bootstrapping**: Automatically installs missing LSP servers and debug adapters
+- **Runtime detection**: Finds virtual environments, Node versions, Rust toolchains automatically
+- **Multi-language**: Python, TypeScript, JavaScript, Rust, Go - more languages coming
+- **Zero configuration**: Works out of the box, configure only when needed
 
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| **[../tests/TESTING.md](../tests/TESTING.md)** | Complete testing guide | Contributors |
-| **[../CHANGELOG.md](../CHANGELOG.md)** | Version history and changes | Everyone |
+### Focus on What Matters
 
----
+Otter **does not** reimplement what agents can already do via shell:
 
-## 📖 Quick Navigation
+- ❌ Text search → Agents use `rg` or `grep`
+- ❌ Running tests → Agents use `pytest`, `cargo test`, etc.
+- ❌ Git operations → Agents use `git` directly
+- ❌ File manipulation → Agents use standard shell tools
 
-### Getting Started
-1. **[../README.md](../README.md)** - Start here for installation
-2. **[DEPENDENCIES.md](DEPENDENCIES.md)** - Install system dependencies
-3. **[CONFIGURATION.md](CONFIGURATION.md)** - Configure for your project (optional)
-4. **[USER_GUIDE.md](USER_GUIDE.md)** - Learn how to use Otter
+Otter **does** provide what agents cannot easily access:
 
-### Using Otter
-- **[USER_GUIDE.md](USER_GUIDE.md)** - All 15 tools with examples
-- **[../README.md#using-with-mcp-clients](../README.md#using-with-mcp-clients)** - Integration examples
+- ✅ **LSP intelligence**: Definitions, references, hover info, completions
+- ✅ **Code semantics**: Type checking, diagnostics, symbol extraction
+- ✅ **Debug capabilities**: Breakpoints, stepping, variable inspection
+- ✅ **Safe refactoring**: Rename symbols, extract functions, apply fixes
 
-### Contributing
-1. **[CONTRIBUTING.md](CONTRIBUTING.md)** - Start here for development
-2. **[ARCHITECTURE.md](ARCHITECTURE.md)** - Understand the design
-3. **[TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md)** - Deep dive into implementation
-4. **[../tests/TESTING.md](../tests/TESTING.md)** - Testing guide
+## Architecture (High-Level)
 
----
+Otter is built on three core components:
 
-## 📄 Document Summaries
+```
+┌─────────────────────────────────────────────┐
+│         MCP Server (FastMCP)                │
+│  - Tool definitions & serialization         │
+│  - Standard MCP protocol interface          │
+└──────────────────┬──────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────┐
+│      CliIdeServer (Orchestration)           │
+│  - Session management                       │
+│  - Service coordination                     │
+│  - Request validation                       │
+└──────────────────┬──────────────────────────┘
+                   │
+        ┌──────────┴──────────┐
+        │                     │
+┌───────▼────────┐   ┌────────▼────────┐
+│  LSP Services  │   │  DAP Services   │
+│  - Navigation  │   │  - Debugging    │
+│  - Analysis    │   │  - Breakpoints  │
+│  - Refactoring │   │  - Inspection   │
+└───────┬────────┘   └────────┬────────┘
+        │                     │
+        └──────────┬──────────┘
+                   │
+┌──────────────────▼──────────────────────────┐
+│     Neovim (Headless Instance)              │
+│  - LSP client (built-in)                    │
+│  - DAP client (nvim-dap plugin)             │
+│  - TreeSitter parsers                       │
+│  - Lua runtime                              │
+└──────────────────┬──────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────┐
+│  Language Servers & Debug Adapters          │
+│  - pyright, tsserver, rust-analyzer, ...    │
+│  - debugpy, node-debug2, codelldb, ...      │
+└─────────────────────────────────────────────┘
+```
 
-### ROADMAP.md
-**What**: Planned tools and features with detailed specifications  
-**When to read**: Understanding future direction or picking tasks  
-**Key sections**:
-- High priority tools (buffer editing, LSP quick fixes)
-- Medium priority tools (advanced navigation, refactoring)
-- Low priority tools (polish and helpers)
-- Out of scope features (what Otter won't do)
-- Implementation estimates and phases
+### Why Neovim?
 
-### README.md (Project Root)
-**What**: Project overview, installation, quick start  
-**When to read**: First time using Otter  
-**Key sections**:
-- Philosophy & features
-- Quick setup
-- MCP client integration
-- Development status
+Neovim provides mature, battle-tested infrastructure:
 
-### USER_GUIDE.md
-**What**: Complete reference for all Otter tools  
-**When to read**: Learning how to use specific tools  
-**Key sections**:
-- All 15 tools with parameters, returns, examples
-- Language support
-- Integration examples
-- Troubleshooting
+- **Built-in LSP client**: No need to implement LSP protocol
+- **Plugin ecosystem**: DAP support via nvim-dap
+- **TreeSitter**: 40+ languages with incremental parsing
+- **Lua runtime**: Programmable, extensible
+- **Headless mode**: Perfect for server applications
 
-### CONFIGURATION.md
-**What**: Configure LSP and DAP for your project  
-**When to read**: Customizing Otter for your specific setup  
-**Key sections**:
-- `.otter.toml` configuration file format
-- Auto-detection and lazy loading
-- Per-language LSP/DAP configuration
-- Template variables (${VENV}, ${PROJECT_ROOT})
-- Common configurations by project type
-- Examples and troubleshooting
+**Trade-off**: ~500ms startup time, but provides robust foundation for code intelligence.
 
-### DEPENDENCIES.md
-**What**: System dependency requirements and installation  
-**When to read**: Setting up development environment  
-**Key sections**:
-- Required dependencies (Neovim, ripgrep, Node.js, etc.)
-- LSP server installation per language
-- DAP adapter installation
-- macOS installation with Homebrew
-- Troubleshooting
+## Design Principles
 
-### CONTRIBUTING.md
-**What**: Complete contributor guide  
-**When to read**: Contributing to Otter  
-**Key sections**:
-- Core principles (wrapper not reimplementer, language-agnostic)
-- Development patterns (services, paths, async, LSP, TreeSitter, DAP)
-- Testing guide (unit, integration, parameterized)
-- Adding new features
-- Pull request process
-- Common gotchas
+### 1. Type-Safe by Default
 
-### ARCHITECTURE.md
-**What**: High-level architecture and design decisions  
-**When to read**: Understanding system design  
-**Key sections**:
-- System architecture diagram
-- Layer responsibilities
-- Design decisions and rationale
-- Key learnings (LSP via Lua, DAP integration, async patterns)
-- Current status and next priorities
+All responses are strongly-typed dataclasses. Mypy strict mode ensures zero type errors at runtime.
 
-### TECHNICAL_GUIDE.md
-**What**: Deep technical details on Neovim integration  
-**When to read**: Implementing LSP/DAP/TreeSitter features  
-**Key sections**:
-- Neovim client API and patterns
-- LSP integration via Lua
-- DAP integration via nvim-dap
-- TreeSitter setup and queries
-- Async/sync boundary handling
-- Troubleshooting
+### 2. Service-Oriented Architecture
 
-### ../tests/TESTING.md
-**What**: Complete testing documentation  
-**When to read**: Writing or running tests  
-**Key sections**:
-- Running tests (all, by type, by language)
-- Writing unit and integration tests
-- Language-agnostic parameterized testing
-- Debug test framework (exponential backoff polling)
-- Best practices
+Clear separation of concerns:
+- **WorkspaceService**: File operations, session management
+- **NavigationService**: Definitions, references, symbols
+- **AnalysisService**: Diagnostics, dependencies, hover info
+- **RefactoringService**: Renames, extractions, code actions
+- **DebuggingService**: Breakpoints, execution control, inspection
 
-### ../CHANGELOG.md
-**What**: Version history and notable changes  
-**When to read**: Checking what's new or changed  
-**Key sections**:
-- Latest features (DAP debugging, parameterized tests)
-- Breaking changes (none yet)
-- Migration guides
-- Version history
+### 3. Async-First
 
----
+Non-blocking I/O enables concurrent operations. All Neovim RPC calls run in executor pool to prevent blocking the event loop.
 
-## 🗺️ Documentation Map by Task
+### 4. Real Integration Testing
 
-### "I want to use Otter"
-1. [../README.md](../README.md) - Installation and quick start
-2. [DEPENDENCIES.md](DEPENDENCIES.md) - Install dependencies
-3. [CONFIGURATION.md](CONFIGURATION.md) - Configure for your project
-4. [USER_GUIDE.md](USER_GUIDE.md) - Tool reference
+Tests use real Neovim instances with real LSP servers. Slower, but catches real issues that mocks cannot.
 
-### "I want to understand how it works"
-1. [ARCHITECTURE.md](ARCHITECTURE.md) - High-level design
-2. [TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md) - Technical deep dive
+## Unique Aspects
 
-### "I want to contribute"
-1. [CONTRIBUTING.md](CONTRIBUTING.md) - Start here
-2. [ROADMAP.md](ROADMAP.md) - What needs to be built
-3. [ARCHITECTURE.md](ARCHITECTURE.md) - Design principles
-4. [TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md) - Implementation details
-5. [../tests/TESTING.md](../tests/TESTING.md) - Testing guide
+### 1. MCP Protocol Integration
 
-### "I'm having issues"
-1. [DEPENDENCIES.md](DEPENDENCIES.md) - Dependency troubleshooting
-2. [TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md) - Common issues
-3. [USER_GUIDE.md](USER_GUIDE.md) - Tool-specific troubleshooting
+Otter is one of the first IDEs designed specifically for the Model Context Protocol. All capabilities are exposed as MCP tools, making it trivial for any MCP client to integrate.
 
----
+### 2. Auto-Bootstrap Everything
 
-## 🔄 Recent Consolidation
+First-time setup is automatic:
+- Missing LSP servers? Installed automatically
+- Missing debug adapters? Installed automatically
+- No virtual environment? Uses system Python with warning
+- Missing TreeSitter parsers? Compiled on demand
 
-**October 1, 2025** - Major documentation consolidation:
+### 3. Cross-Language by Design
 
-**Created (4 new)**:
-- ✨ `USER_GUIDE.md` - Complete tool reference
-- ✨ `CONTRIBUTING.md` - Contributor guide
-- ✨ `../tests/TESTING.md` - Complete testing guide
-- ✨ `../CHANGELOG.md` - Version history
+Otter treats all languages equally. The same test suite runs against Python, TypeScript, JavaScript, and Rust - ensuring consistent behavior across ecosystems.
 
-**Removed (8 redundant)**:
-- ❌ `SPECIFICATION.md` → Merged into USER_GUIDE.md
-- ❌ `DEVELOPMENT.md` → Merged into CONTRIBUTING.md
-- ❌ `PRIORITY_ANALYSIS.md` → Outdated priorities
-- ❌ `DAP_IMPLEMENTATION_COMPLETE.md` → Extracted to CHANGELOG.md
-- ❌ `DEBUGGING_TEST_FRAMEWORK.md` → Merged into TESTING.md
-- ❌ `DEBUGGING_TEST_REPORT.md` → Historical, archived
-- ❌ `DEBUGGING_TEST_RESULTS.md` → Snapshot, not needed
-- ❌ `../tests/PARAMETERIZATION_COMPLETE.md` → Merged into TESTING.md
-- ❌ `../tests/REFACTORING_SUMMARY.md` → Merged into TESTING.md
-- ❌ `../tests/README.md` → Merged into TESTING.md
-- ❌ `../tests/LANGUAGE_AGNOSTIC_TESTING_GUIDE.md` → Merged into TESTING.md
+### 4. Agent-Optimized Responses
 
-**Result**: From 17 documents → 10 core documents + changelog (41% reduction)
+Responses are structured for agent consumption:
+- File paths are absolute (no ambiguity)
+- Line/column numbers are 1-indexed (LSP standard)
+- Context included (symbol signatures, surrounding code)
+- Diagnostics inline with code (no separate lookup)
 
----
+### 5. Production-Ready DAP Integration
 
-## 📊 Documentation Statistics
+Full debugging support via Neovim's DAP client:
+- Language-agnostic (works with any DAP adapter)
+- Robust state management
+- Async polling for distributed system reliability
+- Battle-tested through nvim-dap plugin
 
-| Category | Documents | Purpose |
-|----------|-----------|---------|
-| User Docs | 4 | Using Otter |
-| Contributor Docs | 4 | Development & roadmap |
-| Project Docs | 2 | Testing & history |
-| Index | 2 | Navigation (this file + README) |
-| **Total** | **12** | **Focused, consolidated** |
+## What Otter Is NOT
 
----
+Otter is **not** a replacement for:
+- Shell access (agents should use shell directly)
+- File manipulation tools (use standard UNIX tools)
+- Git operations (use git CLI)
+- Build systems (use make, cargo, npm, etc.)
+- Test runners (use pytest, jest, cargo test, etc.)
 
-## ✅ Documentation Quality
+Otter complements these tools by providing semantic code understanding that shell commands cannot easily provide.
 
-- ✅ Clear structure (user vs contributor docs)
-- ✅ No duplicate information
-- ✅ Up-to-date with current implementation (13/15 tools, 204 tests)
-- ✅ Cross-referenced appropriately
-- ✅ Comprehensive yet concise
-- ✅ Examples where helpful
-- ✅ Troubleshooting sections included
+## Current Status
 
----
+**Production-Ready Foundation**:
+- ✅ 15 core tools implemented
+- ✅ 204 tests passing
+- ✅ Zero mypy errors (strict mode)
+- ✅ Python, TypeScript, JavaScript, Rust support
+- ✅ Comprehensive debugging capabilities
 
-## 🔗 External Resources
+**Ready for Use**:
+- MCP server interface is stable
+- LSP integration is robust and tested
+- DAP integration is feature-complete
+- Configuration system is flexible and documented
 
-- [Model Context Protocol Docs](https://modelcontextprotocol.io)
-- [Neovim LSP Documentation](https://neovim.io/doc/user/lsp.html)
-- [Debug Adapter Protocol](https://microsoft.github.io/debug-adapter-protocol/)
-- [TreeSitter Documentation](https://tree-sitter.github.io/tree-sitter/)
-- [pynvim Documentation](https://pynvim.readthedocs.io/)
+See [CONFIGURATION.md](./CONFIGURATION.md) for setup details and [CONTRIBUTING.md](./CONTRIBUTING.md) for development information.

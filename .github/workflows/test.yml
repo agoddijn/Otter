@@ -1,0 +1,72 @@
+name: Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+      - dev
+  push:
+    branches:
+      - main
+      - dev
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y software-properties-common
+          
+          # Install Neovim from PPA (for latest version)
+          sudo add-apt-repository -y ppa:neovim-ppa/stable
+          sudo apt-get update
+          sudo apt-get install -y neovim
+          
+          # Install other dependencies
+          sudo apt-get install -y nodejs npm git ripgrep
+          
+          # Verify installations
+          nvim --version
+          node --version
+          npm --version
+          git --version
+          rg --version
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install Python dependencies
+        run: |
+          uv sync
+
+      - name: Install LSP servers for tests
+        run: |
+          uv run python scripts/install_test_lsp_servers.py || echo "⚠️  Some LSP servers couldn't be installed. Tests may be skipped."
+
+      - name: Run tests
+        env:
+          PYTHONPATH: src
+        run: |
+          uv run pytest tests/ -v --tb=short
+
+      - name: Check type safety
+        run: |
+          uv run mypy src/ --strict
+
+      - name: Lint code
+        run: |
+          uv run ruff check src/ tests/
+

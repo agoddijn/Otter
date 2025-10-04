@@ -1,39 +1,160 @@
-# Example Otter configuration for a full-stack project
-# (e.g., Python backend + TypeScript frontend)
-# Copy this to your project root as .otter.toml
+# ============================================================================
+# Otter Configuration: Full-Stack Monorepo
+# ============================================================================
+# Copy this file to your project root as `.otter.toml`
+#
+# This example shows a monorepo setup with multiple languages:
+# - Python backend (e.g., FastAPI, Django, Flask)
+# - TypeScript/JavaScript frontend (e.g., React, Vue, Svelte)
+#
+# Directory structure example:
+#   project/
+#   ├── .otter.toml
+#   ├── backend/
+#   │   ├── .venv/
+#   │   ├── main.py
+#   │   └── requirements.txt
+#   └── frontend/
+#       ├── node_modules/
+#       ├── src/
+#       ├── package.json
+#       └── tsconfig.json
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# LSP Configuration (Multi-Language)
+# ----------------------------------------------------------------------------
+# Explicitly list languages for better performance in large monorepos.
+# Otter will only activate LSP servers for these languages.
 
 [lsp]
-# Explicitly enable languages (more performant than auto-detect for large repos)
+# Languages to enable (avoids scanning entire monorepo)
 languages = ["python", "typescript", "javascript"]
 
-# Python (backend)
+# Optional: Performance tuning for large projects
+# max_lsp_clients = 3  # Limit concurrent language servers
+
+# ----------------------------------------------------------------------------
+# Python Backend Configuration
+# ----------------------------------------------------------------------------
+
 [lsp.python]
 enabled = true
 server = "pyright"
+
+# Use backend-specific virtual environment
+# Adjust path to match your project structure
 python_path = "backend/.venv/bin/python"
 
 [lsp.python.settings]
 python.analysis.typeCheckingMode = "basic"
+python.analysis.autoSearchPaths = true
 
-# TypeScript (frontend)
+# Limit analysis to backend directory for performance
+# python.analysis.include = ["backend"]
+# python.analysis.exclude = ["frontend", "**/node_modules"]
+
+[dap.python]
+enabled = true
+adapter = "debugpy"
+python_path = "backend/.venv/bin/python"
+
+# Optional: Backend-specific environment variables
+# [dap.python.env]
+# DATABASE_URL = "postgresql://localhost/dev"
+# PYTHONPATH = "backend/src"
+
+# ----------------------------------------------------------------------------
+# TypeScript Frontend Configuration
+# ----------------------------------------------------------------------------
+
 [lsp.typescript]
 enabled = true
 server = "tsserver"
 
-# JavaScript (frontend)
+# Optional: Use frontend-specific TypeScript version
+# tsserver_path = "frontend/node_modules/typescript/lib"
+
+[lsp.typescript.settings]
+typescript.suggest.autoImports = true
+typescript.updateImportsOnFileMove.enabled = "always"
+
+# Optional: Limit to frontend directory
+# typescript.tsserver.projectRootPath = "frontend"
+
+[dap.typescript]
+enabled = true
+adapter = "node2"
+
+# ----------------------------------------------------------------------------
+# JavaScript Configuration
+# ----------------------------------------------------------------------------
+
 [lsp.javascript]
 enabled = true
 server = "tsserver"
 
-# Debugging
-[dap.python]
+[dap.javascript]
 enabled = true
-python_path = "backend/.venv/bin/python"
+adapter = "node2"
 
-[dap.typescript]
-enabled = true
+# ----------------------------------------------------------------------------
+# Performance Tuning (Optional)
+# ----------------------------------------------------------------------------
 
 [performance]
-# Limit concurrent LSP clients in large monorepos
+# Limit concurrent LSP clients to manage resource usage
+# Useful for very large monorepos
 max_lsp_clients = 3
 
+# Optional: File watching limits
+# max_file_watches = 10000
+
+# ----------------------------------------------------------------------------
+# Additional Languages (Examples)
+# ----------------------------------------------------------------------------
+# You can add more languages to your monorepo:
+
+# Rust
+# [lsp.rust]
+# enabled = true
+# server = "rust-analyzer"
+#
+# [dap.rust]
+# enabled = true
+# adapter = "codelldb"
+
+# Go
+# [lsp.go]
+# enabled = true
+# server = "gopls"
+#
+# [dap.go]
+# enabled = true
+# adapter = "delve"
+
+# ----------------------------------------------------------------------------
+# Tips for Monorepos
+# ----------------------------------------------------------------------------
+# 1. Virtual Environments:
+#    Keep separate venvs for each Python project:
+#    - backend/.venv
+#    - scripts/.venv
+#
+# 2. Node.js Versions:
+#    Use .nvmrc in subdirectories if different Node versions needed:
+#    - frontend/.nvmrc
+#    - admin/.nvmrc
+#
+# 3. Performance:
+#    - Use explicit `languages = [...]` to avoid scanning everything
+#    - Use `max_lsp_clients` to limit resource usage
+#    - Configure `exclude` paths in language-specific settings
+#
+# 4. Cross-Language Navigation:
+#    Otter supports navigating between languages (e.g., Python API → TS client)
+#    when using shared type definitions or code generation
+#
+# 5. Debugging Multiple Services:
+#    You can debug backend and frontend simultaneously
+#    Each debug session is independent and can be managed separately

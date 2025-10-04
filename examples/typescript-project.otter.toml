@@ -1,19 +1,102 @@
-# Example Otter configuration for a TypeScript/JavaScript project
-# Copy this to your project root as .otter.toml
+# ============================================================================
+# Otter Configuration: TypeScript/JavaScript Project
+# ============================================================================
+# Copy this file to your project root as `.otter.toml`
+#
+# This example shows a TypeScript/JavaScript project setup with:
+# - Language Server Protocol (LSP) for code intelligence
+# - Debug Adapter Protocol (DAP) for debugging
+# - Automatic Node.js version detection (nvm, package.json)
+#
+# Otter will automatically detect Node.js from:
+# - .nvmrc file
+# - package.json "engines.node" field
+# - System Node.js installation
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Language Server Configuration (LSP)
+# ----------------------------------------------------------------------------
+# LSP provides code intelligence: completions, hover info, go-to-definition,
+# find references, diagnostics, and more.
 
 [lsp.typescript]
 enabled = true
+
+# Language server to use
+# - "tsserver": Official TypeScript language server (recommended)
 server = "tsserver"
+
+# Optional: TypeScript version
+# By default, uses the TypeScript version from node_modules or global
+# tsserver_path = "./node_modules/typescript/lib"
+
+# Optional: Server settings
+# [lsp.typescript.settings]
+# typescript.suggest.autoImports = true
+# typescript.updateImportsOnFileMove.enabled = "always"
+# typescript.preferences.importModuleSpecifier = "relative"
 
 [lsp.javascript]
 enabled = true
+
+# JavaScript uses the same tsserver as TypeScript
 server = "tsserver"
+
+# Optional: JSDoc type checking
+# [lsp.javascript.settings]
+# javascript.validate.enable = true
+# javascript.suggest.autoImports = true
+
+# ----------------------------------------------------------------------------
+# Debug Adapter Configuration (DAP)
+# ----------------------------------------------------------------------------
+# DAP provides debugging: breakpoints, step through code, inspect variables,
+# evaluate expressions, and more.
 
 [dap.typescript]
 enabled = true
+
+# Debug adapter to use
+# - "node2": VS Code's Node.js debugger (recommended)
+# - "pwa-node": Playwright adapter (for browser debugging)
 adapter = "node2"
+
+# Optional: Source map support (enabled by default)
+# [dap.typescript.configuration]
+# sourceMaps = true
+# outFiles = ["${workspaceFolder}/dist/**/*.js"]
 
 [dap.javascript]
 enabled = true
 adapter = "node2"
 
+# Optional: Environment variables for debugging
+# [dap.javascript.env]
+# NODE_ENV = "development"
+# DEBUG = "*"
+
+# ----------------------------------------------------------------------------
+# Tips
+# ----------------------------------------------------------------------------
+# 1. Node.js Version Management:
+#    Otter auto-detects Node.js from .nvmrc or package.json
+#    Create .nvmrc: echo "18.17.0" > .nvmrc
+#
+# 2. Installation:
+#    Otter auto-installs missing LSP servers and debug adapters on first use
+#
+# 3. TypeScript Configuration:
+#    Make sure you have a tsconfig.json in your project root
+#    The language server uses this for type checking and resolution
+#
+# 4. Monorepos:
+#    See fullstack-project.otter.toml for multi-language setup
+#
+# 5. React/Vue/Svelte:
+#    This configuration works for all frameworks
+#    The language server understands JSX/TSX automatically
+#
+# 6. Debugging Web Apps:
+#    For browser debugging, consider using adapter = "pwa-chrome"
+#    and configuring the appropriate launch configuration

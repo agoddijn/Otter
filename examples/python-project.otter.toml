@@ -1,19 +1,96 @@
-# Example Otter configuration for a Python project
-# Copy this to your project root as .otter.toml
+# ============================================================================
+# Otter Configuration: Python Project
+# ============================================================================
+# Copy this file to your project root as `.otter.toml`
+#
+# This example shows a basic Python project setup with:
+# - Language Server Protocol (LSP) for code intelligence
+# - Debug Adapter Protocol (DAP) for debugging
+# - Automatic virtual environment detection
+#
+# Otter will automatically detect and use your project's virtual environment.
+# Supported patterns: .venv/, venv/, env/, virtualenv/
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Language Server Configuration (LSP)
+# ----------------------------------------------------------------------------
+# LSP provides code intelligence: completions, hover info, go-to-definition,
+# find references, diagnostics, and more.
 
 [lsp.python]
 enabled = true
+
+# Language server to use. Options:
+# - "pyright" (recommended): Fast, type-aware, Microsoft-maintained
+# - "pylsp": Community-driven, plugin-based
 server = "pyright"
-# Use virtualenv if available
+
+# Python interpreter path
+# ${VENV} is automatically resolved to your virtual environment
+# Examples:
+#   "${VENV}/bin/python"           - Auto-detected venv
+#   "backend/.venv/bin/python"     - Specific venv location
+#   "/usr/bin/python3"             - System Python (not recommended)
 python_path = "${VENV}/bin/python"
 
+# Server-specific settings
+# These are passed directly to the language server
 [lsp.python.settings]
+# Type checking strictness: "off", "basic", "standard", "strict"
 python.analysis.typeCheckingMode = "basic"
+
+# Automatically add project paths to Python path
 python.analysis.autoSearchPaths = true
+
+# Use library stubs for better type information
 python.analysis.useLibraryCodeForTypes = true
+
+# Optional: Exclude paths from analysis (useful for large projects)
+# python.analysis.exclude = ["**/node_modules", "**/__pycache__"]
+
+# Optional: Additional Python paths
+# python.analysis.extraPaths = ["src", "lib"]
+
+# ----------------------------------------------------------------------------
+# Debug Adapter Configuration (DAP)
+# ----------------------------------------------------------------------------
+# DAP provides debugging: breakpoints, step through code, inspect variables,
+# evaluate expressions, and more.
 
 [dap.python]
 enabled = true
+
+# Debug adapter to use
+# - "debugpy": Official Python debugger from Microsoft
 adapter = "debugpy"
+
+# Python interpreter for debugging (usually same as LSP)
 python_path = "${VENV}/bin/python"
 
+# Optional: Default environment variables for debug sessions
+# [dap.python.env]
+# DEBUG = "true"
+# LOG_LEVEL = "debug"
+
+# Optional: Default debug configuration
+# [dap.python.configuration]
+# justMyCode = false  # Step into library code
+# console = "integratedTerminal"
+# stopOnEntry = false
+
+# ----------------------------------------------------------------------------
+# Tips
+# ----------------------------------------------------------------------------
+# 1. Virtual Environments:
+#    Otter auto-detects: .venv, venv, env, virtualenv
+#    Create with: python -m venv .venv
+#
+# 2. Installation:
+#    Otter auto-installs missing LSP servers and debug adapters on first use
+#
+# 3. Multiple Python Versions:
+#    Specify explicit paths: python_path = "/usr/local/bin/python3.11"
+#
+# 4. Monorepos:
+#    See fullstack-project.otter.toml for multi-language setup
