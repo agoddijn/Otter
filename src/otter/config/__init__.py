@@ -15,4 +15,3 @@ __all__ = [
     "detect_project_languages",
     "get_effective_languages",
 ]
-

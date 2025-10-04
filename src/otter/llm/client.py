@@ -15,7 +15,7 @@ from .config import LLMConfig, ModelTier
 
 class LLMClient:
     """Provider-agnostic LLM client.
-    
+
     Uses LiteLLM under the hood to support all major providers:
     - Anthropic (Claude)
     - OpenAI (GPT-4)
@@ -23,42 +23,42 @@ class LLMClient:
     - Azure OpenAI
     - OpenRouter
     - And many more
-    
+
     Features:
     - Automatic provider detection via environment variables
     - Model tier selection (fast/capable/advanced)
     - Fallback support
     - Simple, stateless API
-    
+
     Example:
         >>> config = LLMConfig.from_env()
         >>> client = LLMClient(config)
-        >>> 
+        >>>
         >>> # Use fast model for simple task
         >>> response = await client.complete(
         ...     "Summarize this code in one sentence",
         ...     tier=ModelTier.FAST
         ... )
-        >>> 
+        >>>
         >>> # Use advanced model for complex task
         >>> response = await client.complete(
         ...     "Analyze the security implications of this code",
         ...     tier=ModelTier.ADVANCED
         ... )
     """
-    
+
     def __init__(self, config: Optional[LLMConfig] = None):
         """Initialize LLM client.
-        
+
         Args:
             config: LLM configuration. If None, creates from environment variables.
         """
         self.config = config if config is not None else LLMConfig.from_env()
-        
+
         # Configure LiteLLM
         litellm.suppress_debug_info = True  # Reduce noise in logs
         litellm.drop_params = True  # Drop unsupported params instead of erroring
-    
+
     async def complete(
         self,
         prompt: str,
@@ -69,7 +69,7 @@ class LLMClient:
         **kwargs: Any,
     ) -> str:
         """Make a completion request.
-        
+
         Args:
             prompt: The user prompt/query
             tier: Model tier to use (fast/capable/advanced)
@@ -77,13 +77,13 @@ class LLMClient:
             max_tokens: Maximum tokens in response
             temperature: Sampling temperature (0.0 = deterministic, 1.0 = creative)
             **kwargs: Additional arguments passed to LiteLLM
-        
+
         Returns:
             The completion text from the LLM
-        
+
         Raises:
             RuntimeError: If no providers are available or all requests fail
-        
+
         Example:
             >>> response = await client.complete(
             ...     "What does this function do?\\n\\ndef add(a, b):\\n    return a + b",
@@ -94,13 +94,13 @@ class LLMClient:
             "This function adds two numbers together and returns the result."
         """
         model = self.config.get_model(tier)
-        
+
         # Build messages
         messages: List[Dict[str, str]] = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
-        
+
         try:
             # Call LiteLLM (handles all providers)
             response = await litellm.acompletion(
@@ -108,13 +108,13 @@ class LLMClient:
                 messages=messages,
                 max_tokens=max_tokens,
                 temperature=temperature,
-                **kwargs
+                **kwargs,
             )
-            
+
             # Extract text from response
             content = response.choices[0].message.content
             return content if content else ""
-            
+
         except Exception as e:
             # If request fails, provide helpful error
             available_providers = self.config.get_available_providers()
@@ -123,7 +123,7 @@ class LLMClient:
                 f"Model: {model}\\n"
                 f"Available providers: {available_providers}"
             ) from e
-    
+
     async def complete_with_fallback(
         self,
         prompt: str,
@@ -135,9 +135,9 @@ class LLMClient:
         **kwargs: Any,
     ) -> str:
         """Make a completion request with automatic fallback.
-        
+
         If the primary tier fails, tries fallback tiers in order.
-        
+
         Args:
             prompt: The user prompt/query
             tier: Primary model tier to try
@@ -146,13 +146,13 @@ class LLMClient:
             max_tokens: Maximum tokens in response
             temperature: Sampling temperature
             **kwargs: Additional arguments passed to LiteLLM
-        
+
         Returns:
             The completion text from the LLM
-        
+
         Raises:
             RuntimeError: If all tiers fail
-        
+
         Example:
             >>> # Try advanced, fall back to capable if it fails
             >>> response = await client.complete_with_fallback(
@@ -165,9 +165,9 @@ class LLMClient:
         tiers_to_try = [tier]
         if fallback_tiers:
             tiers_to_try.extend(fallback_tiers)
-        
+
         errors: List[str] = []
-        
+
         # Try each tier in order
         for current_tier in tiers_to_try:
             try:
@@ -177,39 +177,38 @@ class LLMClient:
                     system_prompt=system_prompt,
                     max_tokens=max_tokens,
                     temperature=temperature,
-                    **kwargs
+                    **kwargs,
                 )
             except Exception as e:
                 errors.append(f"{current_tier}: {str(e)}")
                 continue
-        
+
         # All tiers failed
         raise RuntimeError(
-            "All LLM tiers failed. Errors:\\n" +
-            "\\n".join(f"  - {err}" for err in errors)
+            "All LLM tiers failed. Errors:\\n"
+            + "\\n".join(f"  - {err}" for err in errors)
         )
-    
+
     def get_available_providers(self) -> List[str]:
         """Get list of available providers.
-        
+
         Returns:
             List of provider names with API keys configured
         """
         return self.config.get_available_providers()
-    
+
     def get_model_for_tier(self, tier: ModelTier) -> str:
         """Get the model that will be used for a given tier.
-        
+
         Args:
             tier: Model tier
-        
+
         Returns:
             Model identifier string
         """
         return self.config.get_model(tier)
-    
+
     def __repr__(self) -> str:
         """String representation."""
         providers = self.get_available_providers()
         return f"LLMClient(providers={providers})"
-

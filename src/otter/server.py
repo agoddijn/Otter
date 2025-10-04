@@ -6,6 +6,9 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from .models.responses import (
     BreakpointInfo,
+    BufferDiff,
+    BufferEdit,
+    BufferInfo,
     ChangeSummary,
     CodeSummary,
     CompletionsResult,
@@ -13,16 +16,20 @@ from .models.responses import (
     Definition,
     DependencyGraph,
     DiagnosticsResult,
+    DiscardResult,
+    EditResult,
     ErrorExplanation,
     ExecutionState,
     ExtractResult,
     FileContent,
+    FindReplaceResult,
     HoverInfo,
     ProjectTree,
     ReferencesResult,
     RenamePreview,
     RenameResult,
     ReviewResult,
+    SaveResult,
     SearchResult,
     SymbolsResult,
 )
@@ -47,36 +54,36 @@ class CliIdeServer:
 
         # Initialize Neovim client
         self.nvim_client = NeovimClient(project_path=self.project_path)
-        
+
         # Load unified config for LSP and DAP
         from .config import load_config
+
         self._config = load_config(Path(self.project_path))
 
         # Initialize services with Neovim client
         self.navigation = NavigationService(
             nvim_client=self.nvim_client, project_path=self.project_path
-        )  # type: ignore
+        )
         self.refactoring = RefactoringService(
             project_path=self.project_path, nvim_client=self.nvim_client
-        )  # type: ignore
+        )
         self.analysis = AnalysisService(
             nvim_client=self.nvim_client, project_path=self.project_path
-        )  # type: ignore
-        self.workspace = WorkspaceService(  # type: ignore
+        )
+        self.workspace = WorkspaceService(
             project_path=self.project_path, nvim_client=self.nvim_client
         )
         # Pass config to DebugService for unified Python path (same as LSP)
-        self.debugging = DebugService(  # type: ignore
+        self.debugging = DebugService(
             nvim_client=self.nvim_client,
             project_path=self.project_path,
-            config=self._config  # 🔋 Unified config
+            config=self._config,  # 🔋 Unified config
         )
-        self.editing = EditingService(  # type: ignore
+        self.editing = EditingService(
             nvim_client=self.nvim_client, project_path=self.project_path
         )
         self.ai = AIService(
-            nvim_client=self.nvim_client,
-            project_path=self.project_path
+            nvim_client=self.nvim_client, project_path=self.project_path
         )  # Pass nvim_client and project_path for LSP integration and path resolution
 
     async def start(self) -> None:
@@ -110,7 +117,9 @@ class CliIdeServer:
         scope: Literal["file", "package", "project"] = "project",
         exclude_definition: bool = False,
     ) -> ReferencesResult:
-        return await self.navigation.find_references(symbol, file, line, scope, exclude_definition)
+        return await self.navigation.find_references(
+            symbol, file, line, scope, exclude_definition
+        )
 
     async def search(
         self,
@@ -170,7 +179,9 @@ class CliIdeServer:
     async def rename_symbol(
         self, file: str, line: int, column: int, new_name: str, preview: bool = True
     ) -> Union[RenamePreview, RenameResult]:
-        return await self.refactoring.rename_symbol(file, line, column, new_name, preview)
+        return await self.refactoring.rename_symbol(
+            file, line, column, new_name, preview
+        )
 
     async def extract_function(
         self,
@@ -211,7 +222,14 @@ class CliIdeServer:
         just_my_code: bool = True,
     ) -> DebugSession:
         return await self.debugging.start_debug_session(
-            file, module, configuration, breakpoints, args, env, stop_on_entry, just_my_code
+            file,
+            module,
+            configuration,
+            breakpoints,
+            args,
+            env,
+            stop_on_entry,
+            just_my_code,
         )
 
     async def control_execution(
@@ -237,9 +255,7 @@ class CliIdeServer:
         return await self.debugging.set_breakpoints(file, lines, conditions)
 
     async def get_session_info(
-        self, 
-        session_id: Optional[str] = None,
-        max_output_lines: int = 50
+        self, session_id: Optional[str] = None, max_output_lines: int = 50
     ) -> Optional[DebugSession]:
         return await self.debugging.get_session_info(session_id, max_output_lines)
 
@@ -275,7 +291,7 @@ class CliIdeServer:
         return await self.ai.explain_error(
             error_message, context_file, context_content, context_lines
         )
-    
+
     async def explain_symbol(
         self,
         file: str,
@@ -284,31 +300,42 @@ class CliIdeServer:
         include_references: bool = True,
     ) -> CodeSummary:
         return await self.ai.explain_symbol(file, line, character, include_references)
-    
+
     # Buffer Editing
-    async def get_buffer_info(self, file: str):
+    async def get_buffer_info(self, file: str) -> BufferInfo:
         """Get buffer information."""
         return await self.editing.get_buffer_info(file)
-    
-    async def edit_buffer(self, file: str, edits: List, preview: bool = True):
+
+    async def edit_buffer(
+        self, file: str, edits: List[BufferEdit], preview: bool = True
+    ) -> EditResult:
         """Edit buffer lines."""
         return await self.editing.edit_buffer(file, edits, preview)
-    
-    async def save_buffer(self, file: str):
+
+    async def save_buffer(self, file: str) -> SaveResult:
         """Save buffer to disk."""
         return await self.editing.save_buffer(file)
-    
-    async def discard_buffer(self, file: str):
+
+    async def discard_buffer(self, file: str) -> DiscardResult:
         """Discard buffer changes."""
         return await self.editing.discard_buffer(file)
-    
-    async def get_buffer_diff(self, file: str):
+
+    async def get_buffer_diff(self, file: str) -> BufferDiff:
         """Get buffer diff."""
         return await self.editing.get_buffer_diff(file)
-    
-    async def find_and_replace(self, file: str, find: str, replace: str, occurrence: str = "all", preview: bool = True):
+
+    async def find_and_replace(
+        self,
+        file: str,
+        find: str,
+        replace: str,
+        occurrence: str = "all",
+        preview: bool = True,
+    ) -> FindReplaceResult:
         """Find and replace text."""
-        return await self.editing.find_and_replace(file, find, replace, occurrence, preview)
+        return await self.editing.find_and_replace(
+            file, find, replace, occurrence, preview
+        )
 
     # Low-value features removed (agents can use shell commands directly)
 

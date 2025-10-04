@@ -114,7 +114,10 @@ class WorkspaceService:
         if line_range and context_lines > 0:
             start, end = line_range
             # Cap end at total_lines when adding context
-            actual_range = (max(1, start - context_lines), min(total_lines, end + context_lines))
+            actual_range = (
+                max(1, start - context_lines),
+                min(total_lines, end + context_lines),
+            )
 
         # Read file content
         if use_nvim and self.nvim_client is not None:
@@ -175,7 +178,7 @@ class WorkspaceService:
         """Extract and expand import statements using LSP.
 
         This feature requires LSP integration to extract import signatures.
-        
+
         Args:
             file_path: Path to the file being analyzed
             content: File content with line numbers (format: "N|line content")
@@ -262,12 +265,12 @@ class WorkspaceService:
         exclude_patterns: Optional[List[str]] = None,
     ) -> ProjectTree:
         """Get the project directory structure.
-        
+
         Path Resolution:
             - Relative paths (e.g., "src/otter") resolve relative to project_path
             - Absolute paths are used as-is
             - "." returns the project root contents
-        
+
         Args:
             path: Root path to analyze (relative to project root, or absolute)
             max_depth: Maximum directory depth to traverse (0 = root only, 1 = root + children)
@@ -284,7 +287,7 @@ class WorkspaceService:
                 - file_count: Total number of files found
                 - directory_count: Total number of directories found
                 - total_size: Sum of all file sizes (0 if include_sizes=False)
-        
+
         Example:
             >>> result = await service.get_project_structure(path="src", max_depth=2)
             >>> print(result.root)  # /path/to/project/src
@@ -332,9 +335,9 @@ class WorkspaceService:
         metadata: Dict[str, int],
     ) -> Dict[str, Any]:
         """Build directory contents (without wrapper for the directory itself).
-        
+
         Returns the direct children of the given path, not wrapped in the path's name.
-        
+
         Args:
             metadata: Dict to track file_count, directory_count, total_size
         """
@@ -371,14 +374,14 @@ class WorkspaceService:
                 ".ruff_cache",
             }:
                 continue
-            
+
             # Check exclude patterns
             if self._matches_exclude_pattern(str(entry), exclude_patterns):
                 continue
 
             if entry.is_dir():
                 metadata["directory_count"] += 1
-                
+
                 # Check if we can recurse further
                 if current_depth + 1 < max_depth:
                     # Recursively build subtree
@@ -404,7 +407,7 @@ class WorkspaceService:
                     }
             else:
                 metadata["file_count"] += 1
-                
+
                 # Add file
                 file_info: Dict[str, Any] = {"type": "file"}
                 if include_sizes:
@@ -417,17 +420,17 @@ class WorkspaceService:
                 children[entry.name] = file_info
 
         return children
-    
+
     def _matches_exclude_pattern(self, path: str, patterns: List[str]) -> bool:
         """Check if path matches any exclude pattern.
-        
+
         Patterns can use wildcards:
             - "*.pyc" matches any .pyc file
             - "test_*" matches files starting with test_
             - "**/tests/**" matches anything in tests directories
         """
         import fnmatch
-        
+
         for pattern in patterns:
             if fnmatch.fnmatch(path, f"*{pattern}*"):
                 return True
@@ -682,9 +685,7 @@ class WorkspaceService:
         #         diag.fix = await self._get_diagnostic_fix(diag)
 
         return DiagnosticsResult(
-            diagnostics=diagnostics,
-            total_count=len(diagnostics),
-            file=file
+            diagnostics=diagnostics, total_count=len(diagnostics), file=file
         )
 
     async def _get_all_diagnostics(self) -> List[Diagnostic]:
@@ -745,7 +746,7 @@ class WorkspaceService:
     # over direct shell/git commands that agents can already execute:
     #
     # - run_tests: Use `pytest`, `cargo test`, `go test` directly
-    # - trace_execution: Use `python -m pdb` or debugger directly  
+    # - trace_execution: Use `python -m pdb` or debugger directly
     # - mark_position/diff_since_mark: Use `git stash`/`git diff` directly
     # - vim_command: Low-value escape hatch
     # - shell: Agents already have shell access

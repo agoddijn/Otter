@@ -9,67 +9,67 @@ from typing import Any, Optional
 try:
     import tomllib  # Python 3.11+
 except ImportError:
-    import tomli as tomllib  # Fallback
+    import tomli as tomllib  # type: ignore[import-not-found,no-redef]  # Fallback
 
-from .specs import get_runtime_spec, RuntimeSpec, AutoDetectStrategy
+from .specs import AutoDetectStrategy, RuntimeSpec, get_runtime_spec
 from .types import RuntimeInfo
 
 
 class RuntimeResolver:
     """Generic resolver for language runtimes.
-    
+
     Works for any language defined in RUNTIME_SPECS.
     Uses declarative specifications instead of language-specific code.
     """
-    
+
     def __init__(self, project_path: Path):
         """Initialize resolver.
-        
+
         Args:
             project_path: Root path of the project
         """
         self.project_path = Path(project_path)
-    
+
     def resolve_runtime(
         self,
         language: str,
         config: Optional[Any] = None,  # OtterConfig
     ) -> RuntimeInfo:
         """Resolve runtime for a language.
-        
+
         Priority:
         1. Explicit config from .otter.toml
         2. Auto-detection using language-specific rules
         3. System runtime
-        
+
         Args:
             language: Language name (e.g., "python", "javascript")
             config: Optional OtterConfig with explicit paths
-            
+
         Returns:
             RuntimeInfo with resolved runtime details
-            
+
         Raises:
             RuntimeError: If runtime cannot be found
         """
         spec = get_runtime_spec(language)
-        
+
         # 1. Check explicit config (highest priority)
         if config:
             runtime = self._check_explicit_config(language, spec, config)
             if runtime:
                 return runtime
-        
+
         # 2. Auto-detect using spec rules
         runtime = self._auto_detect(language, spec)
         if runtime:
             return runtime
-        
+
         # 3. System fallback
         runtime = self._system_fallback(language, spec)
         if runtime:
             return runtime
-        
+
         # Not found
         display_name = spec.display_name
         raise RuntimeError(
@@ -80,9 +80,9 @@ class RuntimeResolver:
             f"  3. System {spec.executable_name}\n\n"
             f"Please install {display_name} or configure it in .otter.toml:\n"
             f"  [lsp.{language}]\n"
-            f"  {spec.config_key} = \"/path/to/{spec.executable_name}\""
+            f'  {spec.config_key} = "/path/to/{spec.executable_name}"'
         )
-    
+
     def _check_explicit_config(
         self,
         language: str,
@@ -94,29 +94,29 @@ class RuntimeResolver:
         lang_config = config.lsp.language_configs.get(language)
         if not lang_config:
             return None
-        
+
         # Get configured path
         config_key = spec.config_key
         configured_path = getattr(lang_config, config_key, None)
         if not configured_path:
             return None
-        
+
         # Resolve template variables
         resolved_path = config.resolve_path(configured_path)
-        
+
         # Verify it exists
         if not Path(resolved_path).exists():
             return None
-        
+
         version = self._get_version(resolved_path, spec)
-        
+
         return RuntimeInfo(
             language=language,
             path=resolved_path,
             source="explicit_config",
             version=version,
         )
-    
+
     def _auto_detect(
         self,
         language: str,
@@ -124,21 +124,17 @@ class RuntimeResolver:
     ) -> Optional[RuntimeInfo]:
         """Auto-detect runtime using spec rules."""
         auto_detect_rules = spec.auto_detect
-        
+
         # Sort by priority (higher first)
-        sorted_rules = sorted(
-            auto_detect_rules,
-            key=lambda r: r.priority,
-            reverse=True
-        )
-        
+        sorted_rules = sorted(auto_detect_rules, key=lambda r: r.priority, reverse=True)
+
         for rule in sorted_rules:
             detected = self._apply_detection_rule(language, rule, spec)
             if detected:
                 return detected
-        
+
         return None
-    
+
     def _apply_detection_rule(
         self,
         language: str,
@@ -147,7 +143,7 @@ class RuntimeResolver:
     ) -> Optional[RuntimeInfo]:
         """Apply a single detection rule."""
         rule_type = rule.type
-        
+
         if rule_type == "venv":
             return self._detect_venv(language, rule, spec)
         elif rule_type == "conda":
@@ -162,9 +158,9 @@ class RuntimeResolver:
             return self._detect_toolchain_text(language, rule, spec)
         elif rule_type == "go_mod":
             return self._detect_go_mod(language, rule, spec)
-        
+
         return None
-    
+
     def _detect_venv(
         self,
         language: str,
@@ -173,20 +169,20 @@ class RuntimeResolver:
     ) -> Optional[RuntimeInfo]:
         """Detect Python virtual environment."""
         rule_type = rule.type
-        
-        for pattern in rule.patterns:
+
+        for pattern in rule.patterns:  # type: ignore[union-attr]
             venv_path = self.project_path / pattern
             if not venv_path.is_dir():
                 continue
-            
+
             # Try Unix path
-            exe_path = venv_path / rule.executable_path
+            exe_path = venv_path / rule.executable_path  # type: ignore[union-attr]
             if exe_path.exists():
                 version = self._get_version(str(exe_path), spec)
                 original_path = str(exe_path)
                 resolved_path = str(exe_path.resolve())
                 is_symlink = exe_path.is_symlink()
-                
+
                 return RuntimeInfo(
                     language=language,
                     path=resolved_path,
@@ -195,16 +191,16 @@ class RuntimeResolver:
                     original_path=original_path if is_symlink else None,
                     is_symlink=is_symlink,
                 )
-            
+
             # Try Windows path
-            if hasattr(rule, 'executable_path_win'):
+            if hasattr(rule, "executable_path_win"):
                 exe_path_win = venv_path / rule.executable_path_win
                 if exe_path_win.exists():
                     version = self._get_version(str(exe_path_win), spec)
                     original_path = str(exe_path_win)
                     resolved_path = str(exe_path_win.resolve())
                     is_symlink = exe_path_win.is_symlink()
-                    
+
                     return RuntimeInfo(
                         language=language,
                         path=resolved_path,
@@ -213,9 +209,9 @@ class RuntimeResolver:
                         original_path=original_path if is_symlink else None,
                         is_symlink=is_symlink,
                     )
-        
+
         return None
-    
+
     def _detect_conda(
         self,
         language: str,
@@ -225,7 +221,7 @@ class RuntimeResolver:
         """Detect conda environment."""
         # Similar to venv detection
         return self._detect_venv(language, rule, spec)
-    
+
     def _detect_nvm(
         self,
         language: str,
@@ -233,30 +229,30 @@ class RuntimeResolver:
         spec: RuntimeSpec,
     ) -> Optional[RuntimeInfo]:
         """Detect Node version from .nvmrc."""
-        version_file = self.project_path / rule.version_file
+        version_file = self.project_path / rule.version_file  # type: ignore[union-attr]
         if not version_file.exists():
             return None
-        
+
         # Read version
         version = version_file.read_text().strip()
-        
+
         # Construct path from template
-        path_template = rule.path_template
+        path_template = rule.path_template  # type: ignore[union-attr]
         path_str = path_template.replace("{version}", version)
         path = Path(path_str).expanduser()
-        
+
         if not path.exists():
             return None
-        
+
         node_version = self._get_version(str(path), spec)
-        
+
         return RuntimeInfo(
             language=language,
             path=str(path.resolve()),
             source="auto_detect_nvm",
             version=node_version,
         )
-    
+
     def _detect_local_node_modules(
         self,
         language: str,
@@ -264,8 +260,8 @@ class RuntimeResolver:
         spec: RuntimeSpec,
     ) -> Optional[RuntimeInfo]:
         """Detect local node_modules installation."""
-        for pattern in rule.patterns:
-            local_path = self.project_path / pattern / rule.executable_path
+        for pattern in rule.patterns:  # type: ignore[union-attr]
+            local_path = self.project_path / pattern / rule.executable_path  # type: ignore[union-attr]
             if local_path.exists():
                 version = self._get_version(str(local_path), spec)
                 return RuntimeInfo(
@@ -274,9 +270,9 @@ class RuntimeResolver:
                     source="auto_detect_local",
                     version=version,
                 )
-        
+
         return None
-    
+
     def _detect_toolchain_toml(
         self,
         language: str,
@@ -284,37 +280,38 @@ class RuntimeResolver:
         spec: RuntimeSpec,
     ) -> Optional[RuntimeInfo]:
         """Detect Rust toolchain from rust-toolchain.toml."""
-        toolchain_file = self.project_path / rule.version_file
+        toolchain_file = self.project_path / rule.version_file  # type: ignore[union-attr]
         if not toolchain_file.exists():
             return None
-        
+
         try:
             with open(toolchain_file, "rb") as f:
                 data = tomllib.load(f)
-            
+
             # Navigate nested keys (e.g., "toolchain.channel")
-            keys = rule.toml_key.split(".")
-            value = data
+            keys = rule.toml_key.split(".")  # type: ignore[union-attr]
+            value: Any = data
             for key in keys:
-                value = value.get(key)
+                value = value.get(key)  # type: ignore[union-attr,assignment]
                 if value is None:
                     break
-            
+
             if not value:
-                value = rule.default
-            
+                value = rule.default  # type: ignore[union-attr,assignment]
+
             # Rust uses rustup, not a direct path
             # Return toolchain name
+            version_str = str(value) if not isinstance(value, dict) else "stable"
             return RuntimeInfo(
                 language=language,
                 path=f"rustup::{value}",  # Special format
                 source="auto_detect_toolchain",
-                version=value,
+                version=version_str,
             )
-        
+
         except Exception:
             return None
-    
+
     def _detect_toolchain_text(
         self,
         language: str,
@@ -322,19 +319,19 @@ class RuntimeResolver:
         spec: RuntimeSpec,
     ) -> Optional[RuntimeInfo]:
         """Detect Rust toolchain from rust-toolchain file."""
-        toolchain_file = self.project_path / rule.version_file
+        toolchain_file = self.project_path / rule.version_file  # type: ignore[union-attr]
         if not toolchain_file.exists():
             return None
-        
+
         toolchain = toolchain_file.read_text().strip()
-        
+
         return RuntimeInfo(
             language=language,
             path=f"rustup::{toolchain}",
             source="auto_detect_toolchain",
             version=toolchain,
         )
-    
+
     def _detect_go_mod(
         self,
         language: str,
@@ -342,14 +339,14 @@ class RuntimeResolver:
         spec: RuntimeSpec,
     ) -> Optional[RuntimeInfo]:
         """Detect Go version from go.mod."""
-        go_mod = self.project_path / rule.version_file
+        go_mod = self.project_path / rule.version_file  # type: ignore[union-attr]
         if not go_mod.exists():
             return None
-        
+
         content = go_mod.read_text()
-        pattern = rule.parse
+        pattern = rule.parse  # type: ignore[union-attr]
         match = re.search(pattern, content)
-        
+
         if match:
             version = match.group(1)
             # Note: This just detects the version, still uses system go
@@ -362,9 +359,9 @@ class RuntimeResolver:
                     source="auto_detect_go_mod",
                     version=version,
                 )
-        
+
         return None
-    
+
     def _system_fallback(
         self,
         language: str,
@@ -372,7 +369,7 @@ class RuntimeResolver:
     ) -> Optional[RuntimeInfo]:
         """Try system commands as fallback."""
         system_commands = spec.system_commands
-        
+
         for cmd in system_commands:
             path = shutil.which(cmd)
             if path:
@@ -383,15 +380,15 @@ class RuntimeResolver:
                     source="system",
                     version=version,
                 )
-        
+
         return None
-    
+
     def _get_version(self, executable: str, spec: RuntimeSpec) -> Optional[str]:
         """Get version of an executable."""
         version_check = spec.version_check
         if not version_check:
             return None
-        
+
         try:
             result = subprocess.run(
                 [executable] + version_check.args,
@@ -399,16 +396,15 @@ class RuntimeResolver:
                 text=True,
                 timeout=5,
             )
-            
+
             output = result.stdout + result.stderr
             pattern = version_check.parse
             match = re.search(pattern, output)
-            
+
             if match:
                 return match.group(1)
-        
+
         except Exception:
             pass
-        
-        return None
 
+        return None

@@ -158,17 +158,21 @@ class NeovimClient:
                 }
 
         # Build DAP adapter configs
+        from ..config.parser import DAPLanguageConfig
+
         dap_adapters = {}
         for lang in self.enabled_languages:
             if lang in self.config.dap.language_configs:
-                lang_config = self.config.dap.language_configs[lang]
+                dap_lang_config: DAPLanguageConfig = self.config.dap.language_configs[
+                    lang
+                ]  # type: ignore[assignment]
                 dap_adapters[lang] = {
-                    "enabled": lang_config.enabled,
-                    "python_path": self.config.resolve_path(lang_config.python_path)
-                    if hasattr(lang_config, "python_path") and lang_config.python_path
+                    "enabled": dap_lang_config.enabled,
+                    "python_path": self.config.resolve_path(dap_lang_config.python_path)
+                    if dap_lang_config.python_path
                     else None,
-                    "adapter": getattr(lang_config, "adapter", None),
-                    "configurations": lang_config.configurations or [],
+                    "adapter": dap_lang_config.adapter,
+                    "configurations": dap_lang_config.configurations or [],
                 }
             else:
                 # Use defaults - enable DAP for this language
@@ -292,7 +296,7 @@ end
 
             # Add language-specific LSP configs
             for lang, lang_config in self.config.lsp.language_configs.items():
-                config_data["lsp"]["language_configs"][lang] = {
+                config_data["lsp"]["language_configs"][lang] = {  # type: ignore[index]
                     "enabled": lang_config.enabled,
                     "server": lang_config.server,
                     "python_path": self.config.resolve_path(lang_config.python_path)
@@ -303,14 +307,17 @@ end
                 }
 
             # Add language-specific DAP configs
-            for lang, lang_config in self.config.dap.language_configs.items():
-                config_data["dap"]["language_configs"][lang] = {
-                    "enabled": lang_config.enabled,
-                    "adapter": lang_config.adapter,
-                    "python_path": self.config.resolve_path(lang_config.python_path)
-                    if lang_config.python_path
+            from ..config.parser import DAPLanguageConfig
+
+            for lang, dap_lang_config in self.config.dap.language_configs.items():
+                dap_cfg: DAPLanguageConfig = dap_lang_config  # type: ignore[assignment]
+                config_data["dap"]["language_configs"][lang] = {  # type: ignore[index]
+                    "enabled": dap_cfg.enabled,
+                    "adapter": dap_cfg.adapter,
+                    "python_path": self.config.resolve_path(dap_cfg.python_path)
+                    if dap_cfg.python_path
                     else None,
-                    "configurations": lang_config.configurations,
+                    "configurations": dap_cfg.configurations,
                 }
 
             # Send config to Neovim's global scope
@@ -1615,12 +1622,12 @@ end
             -- Rust: Typically uses cargo
             -- Runtime path would point to cargo if specified
             if {f"'{lua_escape(runtime_path)}'" if runtime_path else "nil"} then
-                config.cargo = {f"'{lua_escape(runtime_path)}'"}
+                config.cargo = {f"'{lua_escape(runtime_path)}'" if runtime_path else "nil"}
             end
         elseif filetype == 'go' then
             -- Go: Set dlv path if specified
             if {f"'{lua_escape(runtime_path)}'" if runtime_path else "nil"} then
-                config.dlvToolPath = {f"'{lua_escape(runtime_path)}'"}
+                config.dlvToolPath = {f"'{lua_escape(runtime_path)}'" if runtime_path else "nil"}
             end
         end
         

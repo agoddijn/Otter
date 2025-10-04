@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 try:
     import tomllib  # Python 3.11+
 except ImportError:
-    import tomli as tomllib  # Fallback for Python 3.10
+    import tomli as tomllib  # type: ignore[import-not-found,no-redef]  # Fallback for Python 3.10
 
 
 @dataclass
@@ -220,13 +220,13 @@ def load_config(project_path: Path) -> OtterConfig:
         for lang in ["python", "javascript", "typescript", "rust", "go"]:
             if lang in dap_section and isinstance(dap_section[lang], dict):
                 lang_data = dap_section[lang]
-                lang_config = DAPLanguageConfig(
+                dap_lang_config = DAPLanguageConfig(
                     enabled=lang_data.get("enabled", True),
                     adapter=lang_data.get("adapter"),
                     python_path=lang_data.get("python_path"),
                     configurations=lang_data.get("configurations", []),
                 )
-                config.dap.language_configs[lang] = lang_config
+                config.dap.language_configs[lang] = dap_lang_config
 
     # Parse performance config
     if "performance" in data:
@@ -240,7 +240,7 @@ def load_config(project_path: Path) -> OtterConfig:
     # Parse plugins config
     if "plugins" in data:
         plugins_data = data["plugins"]
-        
+
         # Handle treesitter: can be bool or dict (when [plugins.treesitter] exists)
         treesitter_value = plugins_data.get("treesitter", True)
         if isinstance(treesitter_value, dict):
@@ -254,7 +254,7 @@ def load_config(project_path: Path) -> OtterConfig:
         else:
             # Boolean value
             config.plugins.treesitter = treesitter_value
-        
+
         config.plugins.lsp = plugins_data.get("lsp", True)
         config.plugins.dap = plugins_data.get("dap", True)
 
@@ -349,4 +349,3 @@ def get_effective_languages(config: OtterConfig) -> List[str]:
     languages -= set(config.lsp.disabled_languages)
 
     return sorted(languages)
-

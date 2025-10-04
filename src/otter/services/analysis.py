@@ -200,34 +200,34 @@ class AnalysisService:
         self, module_names: List[str], filetype: str
     ) -> List[str]:
         """Clean module names captured by TreeSitter (language-agnostic).
-        
+
         TreeSitter now captures module names directly, we just need to clean them up:
         - Remove quotes from JavaScript/TypeScript strings: 'foo' -> foo
         - Remove quotes from Go strings: "foo" -> foo
         - Python and Rust module names come clean from TreeSitter
-        
+
         Args:
             module_names: Module names captured by TreeSitter @module captures
             filetype: File type (for any language-specific cleanup if needed)
-            
+
         Returns:
             Cleaned module names
         """
-        
+
         cleaned = []
         for name in module_names:
             # Strip surrounding whitespace
             name = name.strip()
-            
+
             # Remove surrounding quotes (single or double) if present
             # This handles JavaScript/TypeScript: 'foo', "foo"
             # And Go: "foo"
             if name.startswith(("'", '"')) and name.endswith(("'", '"')):
                 name = name[1:-1]
-            
+
             if name:  # Only add non-empty names
                 cleaned.append(name)
-        
+
         return cleaned
 
     async def _get_imported_by_via_search(self, target_file: Path) -> List[str]:
@@ -235,7 +235,7 @@ class AnalysisService:
 
         Uses a generic regex pattern that matches common import/require/use syntax
         across most programming languages.
-        
+
         Instead of having separate patterns for each language, we use a broad pattern
         that captures the common structure:
         - Import keyword: import, from, require, use, include, etc.
@@ -245,6 +245,7 @@ class AnalysisService:
             # Get the module/file name to search for
             file_stem = target_file.stem  # filename without extension
             import re as regex_module
+
             escaped_stem = regex_module.escape(file_stem)
 
             # Generic pattern that matches import statements across languages
@@ -258,7 +259,7 @@ class AnalysisService:
             # - Java: import foo
             # - C/C++: #include "foo"
             # - And many more!
-            
+
             # Pattern explanation:
             # Look for common import keywords followed by the module name
             # The module name can appear:

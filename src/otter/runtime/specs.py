@@ -10,6 +10,7 @@ from typing import Dict, List, Literal, Union
 @dataclass(frozen=True)
 class VersionCheck:
     """Configuration for checking runtime version."""
+
     args: List[str]
     parse: str  # Regex pattern to extract version
 
@@ -17,6 +18,7 @@ class VersionCheck:
 @dataclass(frozen=True)
 class VenvDetection:
     """Virtual environment detection strategy."""
+
     type: Literal["venv"] = "venv"
     patterns: List[str] = field(default_factory=list)
     executable_path: str = "bin/python"
@@ -27,6 +29,7 @@ class VenvDetection:
 @dataclass(frozen=True)
 class CondaDetection:
     """Conda environment detection strategy."""
+
     type: Literal["conda"] = "conda"
     patterns: List[str] = field(default_factory=list)
     executable_path: str = "bin/python"
@@ -36,6 +39,7 @@ class CondaDetection:
 @dataclass(frozen=True)
 class NvmDetection:
     """NVM (Node Version Manager) detection strategy."""
+
     type: Literal["nvm"] = "nvm"
     version_file: str = ".nvmrc"
     path_template: str = "~/.nvm/versions/node/v{version}/bin/node"
@@ -45,6 +49,7 @@ class NvmDetection:
 @dataclass(frozen=True)
 class LocalNodeModulesDetection:
     """Local node_modules detection strategy."""
+
     type: Literal["local_node_modules"] = "local_node_modules"
     patterns: List[str] = field(default_factory=list)
     executable_path: str = "node"
@@ -54,6 +59,7 @@ class LocalNodeModulesDetection:
 @dataclass(frozen=True)
 class ToolchainTomlDetection:
     """Rust toolchain.toml detection strategy."""
+
     type: Literal["toolchain_toml"] = "toolchain_toml"
     version_file: str = "rust-toolchain.toml"
     toml_key: str = "toolchain.channel"
@@ -64,6 +70,7 @@ class ToolchainTomlDetection:
 @dataclass(frozen=True)
 class ToolchainTextDetection:
     """Rust toolchain text file detection strategy."""
+
     type: Literal["toolchain_text"] = "toolchain_text"
     version_file: str = "rust-toolchain"
     priority: int = 9
@@ -72,6 +79,7 @@ class ToolchainTextDetection:
 @dataclass(frozen=True)
 class GoModDetection:
     """Go module (go.mod) detection strategy."""
+
     type: Literal["go_mod"] = "go_mod"
     version_file: str = "go.mod"
     parse: str = r"go\s+(\d+\.\d+)"
@@ -93,6 +101,7 @@ AutoDetectStrategy = Union[
 @dataclass(frozen=True)
 class RuntimeSpec:
     """Complete runtime specification for a language."""
+
     display_name: str
     executable_name: str
     config_key: str
@@ -127,7 +136,6 @@ RUNTIME_SPECS: Dict[str, RuntimeSpec] = {
             parse=r"Python (\d+\.\d+\.\d+)",
         ),
     ),
-    
     "javascript": RuntimeSpec(
         display_name="Node.js",
         executable_name="node",
@@ -150,7 +158,6 @@ RUNTIME_SPECS: Dict[str, RuntimeSpec] = {
             parse=r"v(\d+\.\d+\.\d+)",
         ),
     ),
-    
     "typescript": RuntimeSpec(
         # TypeScript uses Node runtime
         display_name="TypeScript (Node.js)",
@@ -169,7 +176,6 @@ RUNTIME_SPECS: Dict[str, RuntimeSpec] = {
             parse=r"v(\d+\.\d+\.\d+)",
         ),
     ),
-    
     "rust": RuntimeSpec(
         display_name="Rust",
         executable_name="cargo",
@@ -192,7 +198,6 @@ RUNTIME_SPECS: Dict[str, RuntimeSpec] = {
             parse=r"cargo (\d+\.\d+\.\d+)",
         ),
     ),
-    
     "go": RuntimeSpec(
         display_name="Go",
         executable_name="go",
@@ -215,22 +220,20 @@ RUNTIME_SPECS: Dict[str, RuntimeSpec] = {
 
 def get_runtime_spec(language: str) -> RuntimeSpec:
     """Get runtime spec for a language.
-    
+
     Args:
         language: Language name
-        
+
     Returns:
         Runtime specification (typed dataclass)
-        
+
     Raises:
         ValueError: If language not supported
     """
     if language not in RUNTIME_SPECS:
         supported = ", ".join(RUNTIME_SPECS.keys())
         raise ValueError(
-            f"Language '{language}' not supported. "
-            f"Supported languages: {supported}"
+            f"Language '{language}' not supported. Supported languages: {supported}"
         )
-    
-    return RUNTIME_SPECS[language]
 
+    return RUNTIME_SPECS[language]

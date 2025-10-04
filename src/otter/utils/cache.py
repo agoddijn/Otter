@@ -3,7 +3,6 @@ from __future__ import annotations
 from functools import wraps
 from typing import Any, Awaitable, Callable, Dict, Tuple, TypeVar
 
-
 F = TypeVar("F", bound=Callable[..., Awaitable[Any]])
 
 
@@ -24,7 +23,7 @@ cache = ResponseCache()
 def cache_result(ttl: int = 300) -> Callable[[F], F]:
     def decorator(func: F) -> F:
         @wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> Any:  # type: ignore[misc]
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             _ = ttl  # placeholder usage
             key = cache._generate_key(func.__name__, args, kwargs)
             return cache._cache.get(key)  # naive stub

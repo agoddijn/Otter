@@ -82,7 +82,7 @@ def get_project_path() -> str:
 
 def _cleanup_server() -> None:
     """Clean up the IDE server on exit.
-    
+
     This ensures the Neovim process is properly terminated when Claude Desktop closes.
     """
     global _ide_server
@@ -106,27 +106,28 @@ def _setup_cleanup_handlers() -> None:
     """Set up signal handlers and atexit hooks for cleanup."""
     # Register atexit handler for normal exit
     atexit.register(_cleanup_server)
-    
+
     # Register signal handlers for SIGTERM and SIGINT
-    def signal_handler(signum, frame):
+    def signal_handler(signum: int, frame: Any) -> None:
         _cleanup_server()
         # Re-raise the signal to allow normal termination
         signal.signal(signum, signal.SIG_DFL)
         signal.raise_signal(signum)
-    
+
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
 
 
-def _to_dict(obj: Any) -> Any:
+def _to_dict(obj: Any) -> dict[str, Any]:
     """Convert dataclass objects to dictionaries for JSON serialization."""
     if hasattr(obj, "__dataclass_fields__"):
-        return asdict(obj)
+        result = asdict(obj)
+        return result if isinstance(result, dict) else {}
     elif isinstance(obj, list):
-        return [_to_dict(item) for item in obj]
+        return {"items": [_to_dict(item) for item in obj]}
     elif isinstance(obj, dict):
         return {k: _to_dict(v) for k, v in obj.items()}
-    return obj
+    return {"value": obj}  # Wrap non-dict objects
 
 
 # ============================================================================
@@ -322,10 +323,10 @@ async def get_hover_info(
     Examples:
         # Symbol-based
         get_hover_info(file="server.py", symbol="CliIdeServer")
-        
+
         # Position-based
         get_hover_info(file="server.py", line=83, column=15)
-        
+
         # Disambiguated
         get_hover_info(file="server.py", symbol="User", line=45)
     """
@@ -352,23 +353,23 @@ async def get_completions(
     Returns:
         CompletionsResult dict with:
             - completions: List of completion objects (sorted by relevance)
-            - total_count: Total completions available  
+            - total_count: Total completions available
             - returned_count: Number actually returned
             - truncated: True if limited by max_results
-            
+
         Each completion has:
             - text: The completion text to insert
             - kind: Type of completion (function, method, class, variable, etc.)
             - detail: Additional info (type signature, module, etc.)
             - documentation: Docstring or description if available
-        
+
     Examples:
         # Get top 50 completions after typing "self."
         get_completions("server.py", line=83, column=9)
-        
+
         # Get more results if needed
         get_completions("server.py", line=83, column=9, max_results=100)
-        
+
         # Get all completions (warning: may return 100s of items)
         get_completions("server.py", line=83, column=9, max_results=0)
     """
@@ -423,7 +424,7 @@ async def get_project_structure(
     """Get organized view of project layout.
 
     Explore project structure with configurable depth and detail.
-    
+
     Path Resolution:
         - Relative paths resolve to project root (e.g., "src" -> /project/src)
         - Absolute paths are used as-is
@@ -470,7 +471,7 @@ async def get_symbols(
             - file: File path analyzed
             - total_count: Total symbols in file (including filtered out)
             - language: Detected language
-        
+
         Each symbol includes:
             - signature: Function/method signature with params (from LSP detail)
             - detail: Additional type info from LSP
@@ -503,13 +504,13 @@ async def rename_symbol(
         preview: If True, returns preview without applying changes (default: True)
 
     Returns:
-        RenamePreview (if preview=True) showing all changes, or 
+        RenamePreview (if preview=True) showing all changes, or
         RenameResult (if preview=False) with changes applied
 
     Example:
         # Preview renaming a class
         rename_symbol("models.py", line=45, column=6, new_name="UserAuth")
-        
+
         # Apply rename directly
         rename_symbol("config.rs", line=10, column=11, new_name="AppConfig", preview=False)
     """
@@ -558,19 +559,19 @@ async def summarize_code(
     detail_level: Literal["brief", "detailed"] = "brief",
 ) -> Dict[str, Any]:
     """Summarize code to save context window space.
-    
+
     Use this when you need to understand large files without reading all the code.
     Provides massive context savings (500 lines → 50 words for brief summaries).
-    
+
     Just provide the file path - we read it for you!
-    
+
     Args:
         file: File path to summarize (we read it for you)
         detail_level: "brief" (1-3 sentences) or "detailed" (with key components)
-    
+
     Returns:
         CodeSummary with summary text and metadata
-    
+
     Example:
         # Summarize a large file
         summary = summarize_code(
@@ -590,20 +591,20 @@ async def summarize_changes(
     git_ref: str = "HEAD~1",
 ) -> Dict[str, Any]:
     """Summarize code changes (diff) for quick review.
-    
+
     Compresses diffs into actionable summaries. Use this to understand
     what changed without reading full diffs.
-    
+
     Just provide file path and git ref - we handle the diff!
-    
+
     Args:
         file: File path
         git_ref: Git reference to compare against (default: HEAD~1 = previous commit)
                 Can be: "HEAD~1", "main", commit hash, etc.
-    
+
     Returns:
         ChangeSummary with summary, change types, and breaking changes
-    
+
     Example:
         summary = summarize_changes(
             "auth.py",
@@ -622,22 +623,22 @@ async def quick_review(
     focus: List[str] | None = None,
 ) -> Dict[str, Any]:
     """Quick code review for sanity checks.
-    
+
     Fast, single-shot review focusing on obvious issues. Use this for:
     - Quick sanity check of generated code
     - Catching obvious bugs before committing
     - Second opinion on security issues
-    
+
     NOT a replacement for proper code review or testing.
     Just provide file path - we read it for you!
-    
+
     Args:
         file: File path to review (we read it for you)
         focus: Optional focus areas (e.g., ["security", "performance", "bugs"])
-    
+
     Returns:
         ReviewResult with issues found and overall assessment
-    
+
     Example:
         review = quick_review(
             "auth.py",
@@ -659,22 +660,22 @@ async def explain_error(
     context_line_end: int | None = None,
 ) -> Dict[str, Any]:
     """Explain a cryptic error message.
-    
+
     Interprets error messages and provides actionable fixes. Use this when:
     - Error message is cryptic or unclear
     - Want to understand root cause quickly
     - Need suggestions for fixing the error
-    
+
     Args:
         error_message: The error message/traceback
         context_file: Optional file where error occurred
         context_content: Optional code content around error
         context_line_start: Optional start line of context
         context_line_end: Optional end line of context
-    
+
     Returns:
         ErrorExplanation with explanation, causes, and fixes
-    
+
     Example:
         explanation = explain_error(
             "TypeError: 'NoneType' object is not subscriptable",
@@ -684,12 +685,12 @@ async def explain_error(
         # → "You're trying to access an index on a None value..."
     """
     ide = await get_ide_server()
-    
+
     # Build context_lines tuple if both are provided
     context_lines = None
     if context_line_start is not None and context_line_end is not None:
         context_lines = (context_line_start, context_line_end)
-    
+
     result = await ide.explain_error(
         error_message, context_file, context_content, context_lines
     )
@@ -704,27 +705,27 @@ async def explain_symbol(
     include_references: bool = True,
 ) -> Dict[str, Any]:
     """Explain a symbol using LSP + LLM (semantic understanding).
-    
+
     This is the SMART way to understand code:
     - Uses LSP to find symbol definition
     - Optionally finds all references to show usage
     - LLM explains what it is, what it does, and how it's used
-    
+
     Much better than just reading code - provides semantic context!
-    
+
     Args:
         file: File path
         line: Line number (0-indexed)
-        character: Character position (0-indexed) 
+        character: Character position (0-indexed)
         include_references: Whether to include usage examples from references (default: True)
-    
+
     Returns:
         CodeSummary with comprehensive explanation including:
         - What the symbol is (function/class/variable)
         - What it does / its purpose
         - How and where it's used in the codebase
         - Important patterns or conventions
-    
+
     Example:
         explanation = explain_symbol(
             "server.py",
@@ -828,7 +829,7 @@ async def start_debug_session(
              Example: {"DOPPLER_ENV": "1", "DEBUG": "true"}
         stop_on_entry: Whether to stop at the first line of the program (default: False)
         just_my_code: Whether to debug only user code, skipping library code (default: True)
-        
+
     Note:
         The debugger runs in Otter's current project (same as LSP, file operations, etc).
         Runtime (Python/Node/etc) is auto-detected from the project's venv.
@@ -967,8 +968,7 @@ async def set_breakpoints(
 
 @mcp.tool()
 async def get_debug_session_info(
-    session_id: str | None = None,
-    max_output_lines: int = 50
+    session_id: str | None = None, max_output_lines: int = 50
 ) -> Dict[str, Any]:
     """Get information about a debug session (current, past, or specific).
 
@@ -1007,28 +1007,28 @@ async def get_debug_session_info(
     Examples:
         # Get current session (last 50 lines of output)
         >>> info = get_debug_session_info()
-        
+
         # Get minimal info (no output, just status)
         >>> info = get_debug_session_info(max_output_lines=-1)
-        
+
         # Get recent output (last 10 lines)
         >>> info = get_debug_session_info(max_output_lines=10)
         >>> if info["stdout_truncated"]:
         >>>     print(f"Showing last 10 of {info['stdout_lines_total']} lines")
-        
+
         # Query a specific session (even if terminated)
         >>> session = start_debug_session(file="app.py")
         >>> # Program crashes...
         >>> info = get_debug_session_info(session_id=session["session_id"])
         >>> print(info["stderr"])  # See crash details
         >>> print(info["crash_reason"])  # "Process exited with code 1"
-        
+
         # Debug unexpected pausing behavior
         >>> session = start_debug_session(module="uvicorn", args=["app:main"])
         >>> # Debugger keeps pausing unexpectedly...
         >>> info = get_debug_session_info(session_id=session["session_id"])
         >>> print(info["diagnostic_info"])  # See all stopped/continued events
-        
+
         # Crashed sessions persist for 5 minutes for diagnosis!
     """
     ide = await get_ide_server()
@@ -1048,20 +1048,20 @@ async def get_debug_session_info(
 @mcp.tool()
 async def get_buffer_info(file: str) -> Dict[str, Any]:
     """Get information about a buffer's current state.
-    
+
     Use this before editing to check if the buffer is already open and has
     unsaved changes.
-    
+
     Args:
         file: Path to file (relative to project root or absolute)
-    
+
     Returns:
         Buffer information:
         - is_open: Whether file is open in a buffer
         - is_modified: Whether buffer has unsaved changes
         - line_count: Number of lines in the buffer
         - language: File type/language
-    
+
     Example:
         Check buffer state before editing:
         {
@@ -1075,15 +1075,13 @@ async def get_buffer_info(file: str) -> Dict[str, Any]:
 
 @mcp.tool()
 async def edit_buffer(
-    file: str,
-    edits: List[Dict[str, Any]],
-    preview: bool = True
+    file: str, edits: List[Dict[str, Any]], preview: bool = True
 ) -> Dict[str, Any]:
     """Edit lines in a buffer.
-    
+
     Make line-based changes to a file. Can preview changes as a unified diff
     before applying them.
-    
+
     Args:
         file: Path to file (relative to project root or absolute)
         edits: List of edit operations, each with:
@@ -1091,18 +1089,18 @@ async def edit_buffer(
             - line_end: Ending line number (1-indexed, inclusive)
             - new_text: Replacement text (may contain \\n for multiple lines)
         preview: If true, return diff without applying. If false, apply changes.
-    
+
     Returns:
         If preview=true:
         - preview: Unified diff showing changes
         - applied: false
-        
+
         If preview=false:
         - applied: true
         - success: Whether edits were successful
         - line_count: New line count after edits
         - is_modified: Whether buffer is now modified
-    
+
     Example:
         Preview changes first:
         {
@@ -1116,7 +1114,7 @@ async def edit_buffer(
           ],
           "preview": true
         }
-        
+
         Then apply if satisfied:
         {
           "file": "src/models.py",
@@ -1125,19 +1123,19 @@ async def edit_buffer(
         }
     """
     from .models.responses import BufferEdit
-    
+
     server = await get_ide_server()
-    
+
     # Convert dict edits to BufferEdit objects
     buffer_edits = [
         BufferEdit(
             line_start=edit["line_start"],
             line_end=edit["line_end"],
-            new_text=edit["new_text"]
+            new_text=edit["new_text"],
         )
         for edit in edits
     ]
-    
+
     result = await server.edit_buffer(file, buffer_edits, preview)
     return _to_dict(result)
 
@@ -1204,7 +1202,7 @@ async def get_buffer_diff(file: str) -> Dict[str, Any]:
     Example:
         get_buffer_diff(file="src/models.py")
         → {"has_changes": true, "diff": "--- a/src/models.py..."}
-        
+
         After discard_buffer():
         → {"has_changes": false}  # Success!
     """
@@ -1215,17 +1213,13 @@ async def get_buffer_diff(file: str) -> Dict[str, Any]:
 
 @mcp.tool()
 async def find_and_replace(
-    file: str,
-    find: str,
-    replace: str,
-    occurrence: str = "all",
-    preview: bool = True
+    file: str, find: str, replace: str, occurrence: str = "all", preview: bool = True
 ) -> Dict[str, Any]:
     """Find and replace text in a file (convenience tool).
-    
+
     Text-based alternative to edit_buffer. More natural for simple substitutions
     like changing configuration values or fixing typos.
-    
+
     Args:
         file: Path to file (relative to project root or absolute)
         find: Text to find (exact match, whitespace-sensitive)
@@ -1235,7 +1229,7 @@ async def find_and_replace(
             - "first": Replace only the first occurrence
             - "2", "3", etc.: Replace specific occurrence (1-indexed)
         preview: If true, return preview diff. If false, apply changes.
-    
+
     Returns:
         Find/replace result:
         - success: Whether operation succeeded
@@ -1245,7 +1239,7 @@ async def find_and_replace(
         - line_count: Line count after changes (if applied)
         - is_modified: Modified status (if applied)
         - error: Error message if failed
-    
+
     Example (preview):
         Change log level:
         {
@@ -1255,7 +1249,7 @@ async def find_and_replace(
           "occurrence": "all",
           "preview": true
         }
-    
+
     Example (apply):
         Fix typo (first occurrence only):
         {
@@ -1265,11 +1259,11 @@ async def find_and_replace(
           "occurrence": "first",
           "preview": false
         }
-    
+
     When to use vs edit_buffer:
         - find_and_replace: Simple text substitutions, config changes
         - edit_buffer: Structural changes, inserting lines, precise edits
-    
+
     Note:
         - Whitespace-sensitive (spaces/tabs must match exactly)
         - For complex edits, use edit_buffer with line numbers
@@ -1697,17 +1691,17 @@ You'll know things worked when:
 @mcp.tool()
 async def get_otter_config() -> Dict[str, Any]:
     """Get Otter's current configuration and runtime detection info.
-    
+
     Shows the current project's configuration including:
     - Project path that Otter is operating on
     - Detected runtimes (Python, Node, Rust, Go) for THIS project
     - Configuration from .otter.toml (if present)
     - LSP and DAP status
-    
+
     ⚠️  NOTE: All Otter tools (LSP, DAP, file operations) operate on this same project.
     To work on a different project, start a separate Otter instance for it.
     Use get_runtime_info() to check runtimes for other projects (read-only).
-    
+
     Returns:
         Configuration including:
         - project_path: Current project Otter is configured for
@@ -1722,13 +1716,13 @@ async def get_otter_config() -> Dict[str, Any]:
           - resolved_path: Where the symlink points to
         - lsp_enabled: Whether LSP is enabled
         - dap_enabled: Whether DAP is enabled
-    
+
     Examples:
         # Check what project Otter is working on
         >>> config = get_otter_config()
         >>> print(f"Working on: {config['project_name']}")
         >>> print(f"Python: {config['runtimes']['python']['path']}")
-        
+
         # Check if Python is a symlink (e.g., UV venv)
         >>> python = config['runtimes']['python']
         >>> if python.get('is_symlink'):
@@ -1736,54 +1730,58 @@ async def get_otter_config() -> Dict[str, Any]:
         ...     print(f"Points to: {python['resolved_path']}")
         "Using venv: /path/to/project/.venv/bin/python"
         "Points to: /path/to/uv/python/cpython-.../python3.12"
-        
+
         # Verify configuration before starting work
         >>> config = get_otter_config()
         >>> if not config['runtimes']['python']['available']:
         ...     print("Warning: No Python runtime detected!")
     """
-    from otter.runtime import RuntimeResolver
     from otter.config import load_config
-    
+    from otter.runtime import RuntimeResolver
+
     project_path = get_project_path()
     config = load_config(Path(project_path))
-    
+
     # Check if .otter.toml exists
     config_file = Path(project_path) / ".otter.toml"
     has_config_file = config_file.exists()
-    
+
     # Detect runtimes for this project
     resolver = RuntimeResolver(Path(project_path))
     runtimes = {}
-    
+
     for language in ["python", "javascript", "typescript", "rust", "go"]:
         try:
             runtime = resolver.resolve_runtime(language, config)
-            
+
             # 🔑 CRITICAL: For symlinks (UV venvs), report the ORIGINAL path as primary
             # This is the path you should actually USE for execution
-            usable_path = runtime.original_path if (runtime.is_symlink and runtime.original_path) else runtime.path
-            
+            usable_path = (
+                runtime.original_path
+                if (runtime.is_symlink and runtime.original_path)
+                else runtime.path
+            )
+
             runtime_dict = {
                 "path": str(usable_path),  # The path you should USE
                 "version": runtime.version,
                 "source": runtime.source,
                 "available": True,
             }
-            
+
             # Add symlink info for transparency
             if runtime.is_symlink and runtime.original_path:
                 runtime_dict["is_symlink"] = True
                 runtime_dict["symlink_path"] = runtime.original_path
                 runtime_dict["resolved_path"] = runtime.path
-            
+
             runtimes[language] = runtime_dict
         except Exception as e:
             runtimes[language] = {
                 "available": False,
                 "error": str(e),
             }
-    
+
     result = {
         "project_path": project_path,
         "project_name": Path(project_path).name,
@@ -1793,35 +1791,34 @@ async def get_otter_config() -> Dict[str, Any]:
         "lsp_enabled": config.lsp.enabled if config else True,
         "dap_enabled": config.dap.enabled if config else True,
     }
-    
+
     # Add explicit config values if .otter.toml exists
     if has_config_file and config:
         # Add any explicit runtime overrides from config
         explicit_runtimes = {}
-        if hasattr(config, 'python_path') and config.python_path:
-            explicit_runtimes['python'] = config.python_path
-        
+        if hasattr(config, "python_path") and config.python_path:
+            explicit_runtimes["python"] = config.python_path
+
         if explicit_runtimes:
-            result['explicit_runtime_overrides'] = explicit_runtimes
-    
+            result["explicit_runtime_overrides"] = explicit_runtimes
+
     return result
 
 
 @mcp.tool()
 async def get_runtime_info(
-    project_path: str,
-    language: str | None = None
+    project_path: str, language: str | None = None
 ) -> Dict[str, Any]:
     """Preview what runtimes would be detected for a different project.
-    
+
     This is useful BEFORE debugging a different project to verify the correct
     runtime will be used. Does NOT change Otter's configuration.
-    
+
     Args:
         project_path: Path to the project to check runtimes for
         language: Optional specific language to check (python, javascript, typescript, rust, go)
                  If not provided, checks all supported languages
-    
+
     Returns:
         Dict with runtime information for the specified project:
         - path: Resolved path to runtime executable
@@ -1830,9 +1827,9 @@ async def get_runtime_info(
         - is_symlink: True if the runtime is a symlink (e.g., UV venvs)
         - symlink_path: Original symlink path before resolution
         - resolved_path: Where the symlink points to
-        
+
         If language not specified: Dict of all detected runtimes
-    
+
     Examples:
         # Check Python runtime for fern-mono BEFORE debugging it
         >>> runtime = get_runtime_info(
@@ -1843,13 +1840,13 @@ async def get_runtime_info(
         >>> print(f"Source: {runtime['source']}")
         "Would use: /Users/user/fern-folder/fern-mono/.venv/bin/python"
         "Source: venv"
-        
+
         # Check all runtimes for a project
         >>> runtimes = get_runtime_info("/path/to/project")
         >>> for lang, info in runtimes.items():
         ...     if info['available']:
         ...         print(f"{lang}: {info['path']}")
-        
+
         # Check if a different project's venv has required dependencies
         >>> runtime = get_runtime_info(
         ...     project_path="/Users/user/other-project",
@@ -1857,61 +1854,67 @@ async def get_runtime_info(
         ... )
         >>> print(f"That project uses: {runtime['path']}")
         >>> print(f"Source: {runtime['source']}")
-        
+
         Note: To debug that project, start a separate Otter instance for it.
     """
-    from otter.runtime import RuntimeResolver
     from otter.config import load_config
-    
+    from otter.runtime import RuntimeResolver
+
     target_path = Path(project_path)
     if not target_path.exists():
         return {
             "error": f"Project path does not exist: {project_path}",
             "project_path": project_path,
         }
-    
+
     config = load_config(target_path)
     resolver = RuntimeResolver(target_path)
-    
+
     # Check specific language or all
-    languages = [language] if language else ["python", "javascript", "typescript", "rust", "go"]
-    
+    languages = (
+        [language] if language else ["python", "javascript", "typescript", "rust", "go"]
+    )
+
     results = {}
     for lang in languages:
         try:
             runtime = resolver.resolve_runtime(lang, config)
-            
+
             # 🔑 CRITICAL: For symlinks (UV venvs), report the ORIGINAL path as primary
             # This is the path you should actually USE for execution
-            usable_path = runtime.original_path if (runtime.is_symlink and runtime.original_path) else runtime.path
-            
+            usable_path = (
+                runtime.original_path
+                if (runtime.is_symlink and runtime.original_path)
+                else runtime.path
+            )
+
             runtime_dict = {
                 "path": str(usable_path),  # The path you should USE
                 "version": runtime.version,
                 "source": runtime.source,
                 "available": True,
             }
-            
+
             # Add symlink info for transparency
             if runtime.is_symlink and runtime.original_path:
                 runtime_dict["is_symlink"] = True
                 runtime_dict["symlink_path"] = runtime.original_path
                 runtime_dict["resolved_path"] = runtime.path
-            
+
             results[lang] = runtime_dict
         except Exception as e:
             results[lang] = {
                 "available": False,
                 "error": str(e),
             }
-    
+
     # If single language requested, return just that runtime
     if language:
         result = results[language]
-        result['project_path'] = project_path
-        result['language'] = language
+        result["project_path"] = project_path
+        result["language"] = language
         return result
-    
+
     # Otherwise return all runtimes
     return {
         "project_path": project_path,
@@ -1925,7 +1928,7 @@ async def get_runtime_info(
 # ============================================================================
 
 
-def main():
+def main() -> None:
     """Run the MCP server.
 
     The project path can be set via:

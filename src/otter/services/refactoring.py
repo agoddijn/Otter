@@ -9,7 +9,7 @@ from ..utils.path import resolve_workspace_path
 class RefactoringService:
     def __init__(self, project_path: str, nvim_client: Optional[Any] = None) -> None:
         """Initialize RefactoringService.
-        
+
         Args:
             project_path: Root path of the project (required for path resolution)
             nvim_client: NeovimClient instance for LSP operations
@@ -166,7 +166,6 @@ class RefactoringService:
         import json
 
         return json.dumps(obj).replace("'", "''")
-
 
     async def extract_function(
         self,

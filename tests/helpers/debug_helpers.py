@@ -22,7 +22,7 @@ class PollConfig:
 
 class DebugTestHelper:
     """Helper class for robust debug testing.
-    
+
     Provides utilities to:
     - Poll for expected states with exponential backoff
     - Verify state transitions
@@ -32,7 +32,7 @@ class DebugTestHelper:
 
     def __init__(self, ide_server: Any, poll_config: Optional[PollConfig] = None):
         """Initialize helper with IDE server instance.
-        
+
         Args:
             ide_server: CliIdeServer instance
             poll_config: Optional polling configuration
@@ -47,15 +47,15 @@ class DebugTestHelper:
         context: str = "operation",
     ) -> Dict[str, Any]:
         """Wait for debugger to reach a specific state.
-        
+
         Args:
             expected_status: Expected status ("paused", "running", "stopped", "exited")
             timeout: Maximum time to wait in seconds
             context: Description for error messages
-            
+
         Returns:
             Session info when expected state is reached
-            
+
         Raises:
             TimeoutError: If state is not reached within timeout
         """
@@ -71,7 +71,9 @@ class DebugTestHelper:
                 # Get final state for error message
                 try:
                     final_state = await self.ide_server.get_session_info()
-                    state_desc = f"status={final_state.status}" if final_state else "no session"
+                    state_desc = (
+                        f"status={final_state.status}" if final_state else "no session"
+                    )
                 except Exception as e:
                     state_desc = f"error getting state: {e}"
 
@@ -99,13 +101,13 @@ class DebugTestHelper:
 
     async def wait_for_session_ready(self, timeout: float = 3.0) -> Dict[str, Any]:
         """Wait for a debug session to be created and ready.
-        
+
         Args:
             timeout: Maximum time to wait
-            
+
         Returns:
             Session info
-            
+
         Raises:
             TimeoutError: If session not ready within timeout
         """
@@ -136,15 +138,15 @@ class DebugTestHelper:
         context: str = "condition",
     ) -> bool:
         """Poll until a condition is met.
-        
+
         Args:
             condition: Callable that returns True when condition is met
             timeout: Maximum time to wait
             context: Description for error messages
-            
+
         Returns:
             True if condition met
-            
+
         Raises:
             TimeoutError: If condition not met within timeout
         """
@@ -172,13 +174,13 @@ class DebugTestHelper:
         context: str = "action",
     ) -> Dict[str, Any]:
         """Execute an action and verify the resulting state.
-        
+
         Args:
             action: Async callable to execute
             expected_status: Expected status after action
             timeout: Maximum time to wait for expected state
             context: Description for error messages
-            
+
         Returns:
             Dict with action result and final state
         """
@@ -203,13 +205,13 @@ class DebugTestHelper:
         timeout: float = 5.0,
     ) -> Dict[str, Any]:
         """Start a debug session and wait for it to be ready.
-        
+
         Args:
             file: File to debug
             breakpoints: Optional breakpoint lines
             expected_status: Expected status after start
             timeout: Maximum time to wait
-            
+
         Returns:
             Dict with session and state info
         """
@@ -232,10 +234,10 @@ class DebugTestHelper:
         self, timeout: float = 5.0
     ) -> Dict[str, Any]:
         """Continue execution and wait for breakpoint to be hit.
-        
+
         Args:
             timeout: Maximum time to wait
-            
+
         Returns:
             Execution state
         """
@@ -253,11 +255,11 @@ class DebugTestHelper:
         self, action: str, timeout: float = 3.0
     ) -> Dict[str, Any]:
         """Execute a step action and verify it completes.
-        
+
         Args:
             action: Step action ("step_over", "step_into", "step_out")
             timeout: Maximum time to wait
-            
+
         Returns:
             Execution state
         """
@@ -275,4 +277,3 @@ class DebugTestHelper:
             return state_info
 
         return {"action_result": state}
-

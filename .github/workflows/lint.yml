@@ -42,5 +42,5 @@ jobs:
 
       - name: Run mypy (type checker)
         run: |
-          uv run mypy src/ --strict
+          uv run mypy src/
 

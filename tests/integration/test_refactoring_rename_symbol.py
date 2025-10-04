@@ -138,7 +138,6 @@ class TestRenameSymbolParameterized:
         language_config: LanguageTestConfig,
     ):
         """Test that renaming finds all references across files."""
-        ext = language_config.file_extension
         user_loc = language_config.symbol_locations["User"]
         models_file = _get_source_file_path(
             language_project_dir, language_config, "models"
@@ -173,7 +172,6 @@ class TestRenameSymbolParameterized:
         language_config: LanguageTestConfig,
     ):
         """Test renaming a function across all languages."""
-        ext = language_config.file_extension
         func_loc = language_config.symbol_locations["create_user"]
         models_file = _get_source_file_path(
             language_project_dir, language_config, "models"
@@ -207,7 +205,6 @@ class TestRenameSymbolParameterized:
         language_config: LanguageTestConfig,
     ):
         """Test renaming a method in a class across all languages."""
-        ext = language_config.file_extension
         greet_loc = language_config.symbol_locations["greet"]
         models_file = _get_source_file_path(
             language_project_dir, language_config, "models"
@@ -243,7 +240,6 @@ class TestRenameSymbolParameterized:
         language_config: LanguageTestConfig,
     ):
         """Test renaming a symbol that doesn't exist across all languages."""
-        ext = language_config.file_extension
         models_file = _get_source_file_path(
             language_project_dir, language_config, "models"
         )
@@ -265,7 +261,6 @@ class TestRenameSymbolParameterized:
         language_config: LanguageTestConfig,
     ):
         """Test renaming the service class across all languages."""
-        ext = language_config.file_extension
         service_loc = language_config.symbol_locations["UserService"]
         services_file = _get_source_file_path(
             language_project_dir, language_config, "services"
@@ -302,7 +297,6 @@ class TestRenameSymbolParameterized:
         language_config: LanguageTestConfig,
     ):
         """Test actually applying a rename (not just preview) across all languages."""
-        ext = language_config.file_extension
         service_loc = language_config.symbol_locations["UserService"]
         services_file = _get_source_file_path(
             language_project_dir, language_config, "services"
@@ -354,7 +348,6 @@ class TestRenameSymbolParameterized:
         language_config: LanguageTestConfig,
     ):
         """Test that rename result has consistent structure across all languages."""
-        ext = language_config.file_extension
         user_loc = language_config.symbol_locations["User"]
         models_file = _get_source_file_path(
             language_project_dir, language_config, "models"
@@ -436,7 +429,6 @@ class TestRenameSymbolParameterized:
         language_config: LanguageTestConfig,
     ):
         """Test that rename finds references across multiple files."""
-        ext = language_config.file_extension
         user_loc = language_config.symbol_locations["User"]
         models_file = _get_source_file_path(
             language_project_dir, language_config, "models"

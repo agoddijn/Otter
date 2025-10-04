@@ -272,7 +272,7 @@ server = "pyright"
 
             (project_path / "main.py").write_text("def hello(): pass\n")
 
-            async with NeovimClient(str(project_path)) as client:
+            async with NeovimClient(str(project_path)):
                 # Should detect venv (venv_path exists in detected_runtimes)
                 assert venv_dir.exists()
 

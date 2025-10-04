@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Any, List, Optional
 
 
 @dataclass
@@ -180,7 +180,7 @@ def check_dependencies_or_raise(verbose: bool = False) -> None:
         raise DependencyError(missing)
 
 
-def get_dependency_status() -> dict[str, dict]:
+def get_dependency_status() -> dict[str, dict[str, Any]]:
     """Get detailed status of all dependencies.
 
     Returns:

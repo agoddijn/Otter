@@ -252,7 +252,7 @@ class TestDebugSessions:
         """Test getting session info with an active session."""
         calc_file = debug_project_dir / "calculator.py"
 
-        session = await ide_server.debugging.start_debug_session(
+        await ide_server.debugging.start_debug_session(
             file=str(calc_file), breakpoints=[2], stop_on_entry=True
         )
 
@@ -274,7 +274,7 @@ class TestDebugSessions:
         calc_file = debug_project_dir / "calculator.py"
 
         # Start a session with stop_on_entry to keep it paused
-        session = await ide_server.debugging.start_debug_session(
+        await ide_server.debugging.start_debug_session(
             file=str(calc_file), breakpoints=[], stop_on_entry=True
         )
 
@@ -441,7 +441,7 @@ class TestStateInspection:
         """Test getting stack frames."""
         calc_file = debug_project_dir / "calculator.py"
 
-        session = await ide_server.debugging.start_debug_session(
+        await ide_server.debugging.start_debug_session(
             file=str(calc_file), breakpoints=[2], stop_on_entry=True
         )
 
@@ -457,7 +457,7 @@ class TestStateInspection:
         """Test getting variables in scope."""
         calc_file = debug_project_dir / "calculator.py"
 
-        session = await ide_server.debugging.start_debug_session(
+        await ide_server.debugging.start_debug_session(
             file=str(calc_file),
             breakpoints=[10],
             stop_on_entry=False,  # In main()
@@ -477,7 +477,7 @@ class TestStateInspection:
         """Test evaluating an expression."""
         calc_file = debug_project_dir / "calculator.py"
 
-        session = await ide_server.debugging.start_debug_session(
+        await ide_server.debugging.start_debug_session(
             file=str(calc_file), breakpoints=[10], stop_on_entry=False
         )
 

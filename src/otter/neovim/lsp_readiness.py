@@ -10,11 +10,11 @@ to real requests with useful data, not just when it reports "initialized".
 import asyncio
 import sys
 from pathlib import Path
-from typing import List
+from typing import Any, List
 
 
 async def wait_for_lsp_ready(
-    nvim_client,
+    nvim_client: Any,
     file_path: str,
     timeout: float = 30.0,
     poll_interval: float = 0.5,
@@ -133,7 +133,7 @@ async def wait_for_lsp_ready(
 
 
 async def wait_for_lsp_indexed(
-    nvim_client,
+    nvim_client: Any,
     file_path: str,
     timeout: float = 30.0,
     poll_interval: float = 0.5,
@@ -339,7 +339,7 @@ async def wait_for_lsp_indexed(
 
 
 async def wait_for_all_lsp_ready(
-    nvim_client,
+    nvim_client: Any,
     file_paths: List[str],
     timeout: float = 30.0,
     use_indexing_check: bool = True,

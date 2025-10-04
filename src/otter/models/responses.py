@@ -15,8 +15,12 @@ class Definition:
         "function", "class", "variable", "module", "method", "property"
     ]
     docstring: Optional[str] = None
-    signature: Optional[str] = None  # Present for functions/methods, null for classes/variables
-    context_lines: List[str] = field(default_factory=list)  # Lines with format "LINE_NUM|CONTENT"
+    signature: Optional[str] = (
+        None  # Present for functions/methods, null for classes/variables
+    )
+    context_lines: List[str] = field(
+        default_factory=list
+    )  # Lines with format "LINE_NUM|CONTENT"
     source_module: Optional[str] = None
     has_alternatives: bool = False  # True if LSP returned multiple possible definitions
 
@@ -34,6 +38,7 @@ class Reference:
 @dataclass
 class FileReferences:
     """References grouped by file."""
+
     file: str
     count: int
     references: List[Reference] = field(default_factory=list)
@@ -42,6 +47,7 @@ class FileReferences:
 @dataclass
 class ReferencesResult:
     """Structured result for find_references with grouping and metadata."""
+
     references: List[Reference]
     total_count: int
     grouped_by_file: List[FileReferences] = field(default_factory=list)
@@ -59,6 +65,7 @@ class SearchResult:
 @dataclass
 class CompletionsResult:
     """Structured result for code completions with metadata."""
+
     completions: List[Completion]
     total_count: int  # Total completions found
     returned_count: int  # Number returned (may be less if truncated)
@@ -97,17 +104,18 @@ class FileContent:
 @dataclass
 class ProjectTree:
     """Directory tree structure with metadata.
-    
+
     Tree structure no longer wraps root directory - returns children directly.
-    
+
     Migration from v0.4.x:
         # Old format (v0.4.x):
         tree = {"project_name": {"type": "directory", "children": {...}}}
-        
+
         # New format (v0.5.0+):
         tree = {"src": {...}, "tests": {...}, "README.md": {...}}
         # Root directory name already provided in 'root' field
     """
+
     root: str  # Absolute path to the root directory
     tree: Dict[str, Any]  # Directory contents (no wrapper for root)
     file_count: int = 0  # Total number of files
@@ -118,27 +126,33 @@ class ProjectTree:
 @dataclass
 class Symbol:
     """Symbol information from LSP document symbols.
-    
+
     Represents a code symbol (class, function, method, variable, etc.)
     extracted from a source file via LSP.
     """
+
     name: str  # Symbol name
     type: str  # Symbol type: "class", "function", "method", "variable", etc.
     line: int  # Line number (1-indexed)
     column: int = 0  # Column number (0-indexed, matching LSP)
     children: Optional[List["Symbol"]] = None  # Nested symbols (methods in class, etc.)
     parent: Optional[str] = None  # Parent symbol name for hierarchy
-    signature: Optional[str] = None  # Function/method signature with params and return type
+    signature: Optional[str] = (
+        None  # Function/method signature with params and return type
+    )
     docstring: Optional[str] = None  # Extracted docstring/documentation
-    detail: Optional[str] = None  # Additional detail from LSP (type info, modifiers, etc.)
+    detail: Optional[str] = (
+        None  # Additional detail from LSP (type info, modifiers, etc.)
+    )
 
 
 @dataclass
 class SymbolsResult:
     """Result of get_symbols with metadata.
-    
+
     Wraps symbol list with file context and counts.
     """
+
     symbols: List[Symbol]  # List of symbols found
     file: str  # File path analyzed
     total_count: int  # Total symbols found (including filtered out)
@@ -225,10 +239,11 @@ class Diagnostic:
 @dataclass
 class DiagnosticsResult:
     """Result containing diagnostics with metadata.
-    
+
     Wraps diagnostic list to ensure proper MCP protocol serialization
     and provide additional context.
     """
+
     diagnostics: List[Diagnostic]
     total_count: int
     file: Optional[str] = None  # File that was analyzed, if specific file requested
@@ -329,7 +344,9 @@ class ExecutionState:
 @dataclass
 class DebugSession:
     session_id: str
-    status: Literal["running", "paused", "stopped", "terminated", "no_session", "exited"]
+    status: Literal[
+        "running", "paused", "stopped", "terminated", "no_session", "exited"
+    ]
     file: Optional[str] = None  # File being debugged (None for module launches)
     module: Optional[str] = None  # Module being debugged (e.g., "uvicorn")
     configuration: Optional[str] = None  # Name of the debug configuration used
@@ -339,8 +356,12 @@ class DebugSession:
     output: str = ""  # Combined stdout+stderr (for backwards compatibility)
     stdout: str = ""  # Standard output from the debugged process (may be truncated)
     stderr: str = ""  # Standard error from the debugged process (may be truncated)
-    stdout_lines_total: int = 0  # Total lines of stdout captured (for truncation awareness)
-    stderr_lines_total: int = 0  # Total lines of stderr captured (for truncation awareness)
+    stdout_lines_total: int = (
+        0  # Total lines of stdout captured (for truncation awareness)
+    )
+    stderr_lines_total: int = (
+        0  # Total lines of stderr captured (for truncation awareness)
+    )
     stdout_truncated: bool = False  # True if stdout was truncated in this response
     stderr_truncated: bool = False  # True if stderr was truncated in this response
     pid: Optional[int] = None  # Process ID of the debugged process
@@ -352,7 +373,9 @@ class DebugSession:
     launch_args: Optional[List[str]] = None  # Command-line arguments used
     launch_env: Optional[Dict[str, str]] = None  # Environment variables used
     launch_cwd: Optional[str] = None  # Working directory used
-    diagnostic_info: List[str] = field(default_factory=list)  # Diagnostic logs (DAP config, initialization events, etc.)
+    diagnostic_info: List[str] = field(
+        default_factory=list
+    )  # Diagnostic logs (DAP config, initialization events, etc.)
 
 
 @dataclass
@@ -366,6 +389,7 @@ class EvaluateResult:
 @dataclass
 class CodeSummary:
     """Summary of code content."""
+
     file: str
     summary: str  # Full LLM response - structured by prompt
     detail_level: Literal["brief", "detailed"]
@@ -374,6 +398,7 @@ class CodeSummary:
 @dataclass
 class ChangeSummary:
     """Summary of code changes (diff)."""
+
     file: str
     summary: str  # Full LLM response - structured by prompt
     git_ref: Optional[str] = None
@@ -382,6 +407,7 @@ class ChangeSummary:
 @dataclass
 class ReviewResult:
     """Result of quick code review."""
+
     file: str
     review: str  # Full LLM response - structured by prompt
     focus_areas: List[str]  # What was reviewed
@@ -390,6 +416,7 @@ class ReviewResult:
 @dataclass
 class ErrorExplanation:
     """Explanation of an error message."""
+
     explanation: str  # Full LLM response - structured by prompt
     error_message: str  # Original error for reference
     context_file: Optional[str] = None
@@ -400,6 +427,7 @@ class ErrorExplanation:
 @dataclass
 class BufferEdit:
     """Single edit operation."""
+
     line_start: int  # 1-indexed start line
     line_end: int  # 1-indexed end line (inclusive)
     new_text: str  # Replacement text (may contain multiple lines)
@@ -408,6 +436,7 @@ class BufferEdit:
 @dataclass
 class BufferInfo:
     """Information about a buffer."""
+
     file: str
     is_open: bool
     is_modified: bool
@@ -418,6 +447,7 @@ class BufferInfo:
 @dataclass
 class EditResult:
     """Result of buffer editing operation."""
+
     file: str
     preview: Optional[str] = None  # Unified diff if preview=True
     applied: bool = False  # Whether changes were applied
@@ -430,6 +460,7 @@ class EditResult:
 @dataclass
 class SaveResult:
     """Result of saving a buffer to disk."""
+
     file: str
     success: bool
     is_modified: bool  # Should be False after successful save
@@ -439,6 +470,7 @@ class SaveResult:
 @dataclass
 class DiscardResult:
     """Result of discarding buffer changes."""
+
     file: str
     success: bool
     is_modified: bool  # Should be False after successful discard
@@ -448,6 +480,7 @@ class DiscardResult:
 @dataclass
 class BufferDiff:
     """Diff between buffer and disk version."""
+
     file: str
     has_changes: bool
     diff: Optional[str] = None  # Unified diff if has_changes
@@ -457,6 +490,7 @@ class BufferDiff:
 @dataclass
 class FindReplaceResult:
     """Result of find-and-replace operation."""
+
     file: str
     success: bool
     preview: Optional[str] = None  # Unified diff if preview=True

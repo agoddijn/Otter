@@ -96,14 +96,14 @@ install-lsp-servers: ## Install LSP servers required for tests
 	@echo "Installing LSP servers for tests..."
 	@uv run python scripts/install_test_lsp_servers.py || echo "⚠️  Some LSP servers couldn't be installed. Tests may be skipped."
 
-test: install-lsp-servers ## Run all tests (parallelized with pytest-xdist, Python only for now)
-	PYTHONPATH=src uv run pytest tests/
+test: install-lsp-servers ## Run all tests (parallelized with pytest-xdist)
+	PYTHONPATH=src uv run pytest tests/ -n auto
 
 test-unit: ## Run unit tests only
-	PYTHONPATH=src uv run pytest tests/unit/ -v
+	PYTHONPATH=src uv run pytest tests/unit/ -v -n auto
 
 test-integration: ## Run integration tests only
-	PYTHONPATH=src uv run pytest tests/integration/ -v
+	PYTHONPATH=src uv run pytest tests/integration/ -v -n auto
 
 test-watch: ## Run tests in watch mode
 	PYTHONPATH=src uv run pytest-watch tests/
@@ -111,14 +111,25 @@ test-watch: ## Run tests in watch mode
 test-coverage: ## Run tests with coverage report
 	PYTHONPATH=src uv run pytest tests/ --cov=src/otter --cov-report=html --cov-report=term
 
-lint: ## Run linter checks
-	uv run ruff check src/
-
-format: ## Format code
-	uv run ruff format src/
-
-typecheck: ## Run type checks
+lint: ## Run all linter checks (matches CI)
+	@echo "Running linter checks (matches CI workflow)..."
+	@echo ""
+	@echo "→ Ruff linter..."
+	uv run ruff check src/ tests/
+	@echo ""
+	@echo "→ Ruff formatter check..."
+	uv run ruff format --check src/ tests/
+	@echo ""
+	@echo "→ Mypy type checker..."
 	uv run mypy src/
+	@echo ""
+	@echo "✅ All linting checks passed!"
+
+format: ## Format code with ruff
+	uv run ruff format src/ tests/
+
+typecheck: ## Run type checks with mypy
+	uv run mypy src/ --strict
 
 clean: ## Clean up temporary files
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
