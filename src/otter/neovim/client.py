@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pynvim  # type: ignore
 
-from ..config import OtterConfig, load_config, get_effective_languages
+from ..config import load_config, get_effective_languages
 from ..bootstrap import check_and_install_lsp_servers
 
 
@@ -308,7 +308,7 @@ end
                 if self.nvim
                 else None
             )
-        except Exception as e:
+        except Exception:
             # Config sending is best-effort, don't fail startup
             pass
     
@@ -1525,7 +1525,6 @@ end
         
         # Build config
         cwd_lua = f"'{lua_escape(cwd)}'" if cwd else "nil"
-        config_name_lua = f"'{lua_escape(config_name)}'" if config_name else "nil"
         module_lua = f"'{lua_escape(module)}'" if module else "nil"
         filepath_lua = f"'{lua_escape(filepath)}'" if filepath else "nil"
         

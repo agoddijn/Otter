@@ -8,6 +8,7 @@ designed to help agents reduce context usage.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import List, Literal, Optional, Tuple
 
 from ..llm import LLMClient, LLMConfig, ModelTier
@@ -84,7 +85,6 @@ class AIService:
              retry logic and webhook handling."
         """
         # Resolve file path using centralized utilities
-        from pathlib import Path
         from ..utils.path import resolve_workspace_path
         
         file_path = resolve_workspace_path(file, self.project_path)
@@ -293,7 +293,6 @@ Be concise and technical."""
             "critical: Password stored in plaintext (line 45)"
         """
         # Resolve file path using centralized utilities
-        from pathlib import Path
         from ..utils.path import resolve_workspace_path
         
         file_path = resolve_workspace_path(file, self.project_path)

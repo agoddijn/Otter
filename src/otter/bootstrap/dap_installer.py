@@ -5,11 +5,10 @@ Automatically installs and configures debug adapters for various languages.
 Similar to LSP bootstrap, ensures "batteries included" debugging experience.
 """
 
-import asyncio
 import shutil
 import subprocess
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 
 class DAPAdapterStatus(Enum):
@@ -156,15 +155,15 @@ def print_missing_prerequisites(language: str, missing: List[str]) -> None:
     
     # Language-specific install instructions
     if "pip" in missing:
-        print(f"\n💡 Install pip:")
-        print(f"   curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py")
-        print(f"   python get-pip.py")
+        print("\n💡 Install pip:")
+        print("   curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py")
+        print("   python get-pip.py")
     elif "npm" in missing:
-        print(f"\n💡 Install Node.js and npm:")
-        print(f"   https://nodejs.org/")
+        print("\n💡 Install Node.js and npm:")
+        print("   https://nodejs.org/")
     elif "go" in missing:
-        print(f"\n💡 Install Go:")
-        print(f"   https://golang.org/dl/")
+        print("\n💡 Install Go:")
+        print("   https://golang.org/dl/")
 
 
 async def install_dap_adapter(language: str, runtime_path: Optional[str] = None) -> bool:
@@ -272,7 +271,7 @@ async def check_and_install_dap_adapter(
     
     # Auto-install
     print(f"\n📦 Auto-installing {language} debugger...")
-    print(f"   (This may take a minute)")
+    print("   (This may take a minute)")
     
     success = await install_dap_adapter(language, runtime_path=runtime_path)
     

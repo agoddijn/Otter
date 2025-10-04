@@ -1,5 +1,5 @@
 """Shared models for requests and responses."""
 
-from .responses import *  # re-export
+from .responses import *  # noqa: F403 - intentional re-export
 
 __all__ = [name for name in dir() if not name.startswith("_")]

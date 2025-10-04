@@ -213,7 +213,6 @@ class AnalysisService:
         Returns:
             Cleaned module names
         """
-        import re
         
         cleaned = []
         for name in module_names:

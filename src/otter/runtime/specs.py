@@ -4,7 +4,7 @@ This is DATA, not code. To add a new language, just add its spec here.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Optional, Union
+from typing import Dict, List, Literal, Union
 
 
 @dataclass(frozen=True)

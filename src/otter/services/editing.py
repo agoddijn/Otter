@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import difflib
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 from ..neovim.client import NeovimClient
 from ..models.responses import BufferEdit, BufferInfo, EditResult, SaveResult, DiscardResult, BufferDiff, FindReplaceResult

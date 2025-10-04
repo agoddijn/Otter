@@ -150,7 +150,7 @@ class DebugService:
                 if runtime.is_symlink and runtime.original_path:
                     print(f"   (Symlink to: {runtime.path})")
                 
-                print(f"   (This is the same runtime used by LSP servers)")
+                print("   (This is the same runtime used by LSP servers)")
             
             except RuntimeError as e:
                 # Runtime resolution failed

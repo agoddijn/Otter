@@ -6,7 +6,7 @@ of using arbitrary sleep delays.
 
 import asyncio
 import sys
-from typing import Optional, List, Dict, Any
+from typing import List
 from pathlib import Path
 
 
@@ -36,7 +36,7 @@ async def wait_for_lsp_ready(
     """
     if not nvim_client.nvim:
         if verbose:
-            print(f"LSP check failed: nvim_client.nvim is None", file=sys.stderr)
+            print("LSP check failed: nvim_client.nvim is None", file=sys.stderr)
         return False
     
     start_time = asyncio.get_event_loop().time()
@@ -165,7 +165,7 @@ async def wait_for_lsp_ready(
                             file=sys.stderr
                         )
                     else:
-                        print(f"No LSP clients attached yet to buffer", file=sys.stderr)
+                        print("No LSP clients attached yet to buffer", file=sys.stderr)
                     
         except Exception as e:
             if verbose:
@@ -199,7 +199,7 @@ async def wait_for_lsp_indexed(
     """
     if not nvim_client.nvim:
         if verbose:
-            print(f"LSP indexed check failed: nvim_client.nvim is None", file=sys.stderr)
+            print("LSP indexed check failed: nvim_client.nvim is None", file=sys.stderr)
         return False
     
     # First wait for LSP to be ready (initialized)
@@ -225,9 +225,6 @@ async def wait_for_lsp_indexed(
         
         try:
             # Try to get document symbols - this indicates the file is indexed
-            # Use a shorter timeout per attempt (2 seconds)
-            attempt_timeout = min(2.0, remaining_time)
-            
             result = await loop.run_in_executor(
                 None,
                 lambda: nvim_client.nvim.exec_lua(
