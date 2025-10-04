@@ -21,6 +21,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Simplified examples directory to only include `.otter.toml` configuration files
 - Removed programmatic examples (not needed for MCP consumption)
+- Increased LSP readiness timeouts for CI environments (45s vs 15s locally)
+- Auto-enable verbose LSP logging in CI for better debugging
+
+### Fixed
+- 74 linting issues (unused imports, f-strings, bare excepts, etc.)
+- CI test reliability with longer LSP indexing timeouts
+- LSP server readiness detection using deterministic request-based checks
+  - Now uses actual LSP requests (documentSymbol, hover) to verify readiness
+  - Removed arbitrary sleep delays in favor of vim.wait() and buf_request_sync
+  - Verifies LSP responses are non-empty and useful, not just present
 
 ### Removed
 - Historical evolution documentation (20+ files)
