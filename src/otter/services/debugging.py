@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from ..bootstrap import ensure_dap_adapter
-from ..runtime import RuntimeResolver
 from ..models.responses import (
     BreakpointInfo,
     DebugSession,
@@ -15,14 +14,15 @@ from ..models.responses import (
     StackFrame,
     Variable,
 )
+from ..runtime import RuntimeResolver
 
 
 class DebugService:
     """Service for language-agnostic debugging via DAP (Debug Adapter Protocol).
-    
+
     Uses Neovim's nvim-dap client to communicate with debug adapters,
     similar to how we use Neovim's LSP client for language intelligence.
-    
+
     This enables debugging for multiple languages without reimplementing DAP:
     - Python (debugpy)
     - JavaScript/TypeScript (node-debug2, vscode-js-debug)
@@ -40,7 +40,7 @@ class DebugService:
         self.project_path = Path(project_path) if project_path else Path.cwd()
         self.config = config  # Unified config for LSP and DAP
         self._active_sessions: Dict[str, Dict[str, Any]] = {}  # session_id -> metadata
-        
+
         # 🎯 Generic runtime resolver - works for ALL languages!
         self.runtime_resolver = RuntimeResolver(self.project_path)
 
@@ -56,7 +56,7 @@ class DebugService:
         just_my_code: bool = True,
     ) -> DebugSession:
         """Start a debug session for a file or module.
-        
+
         Must provide either `file` OR `module` parameter.
 
         Args:
@@ -86,25 +86,27 @@ class DebugService:
             raise ValueError("Cannot specify both 'file' and 'module' - choose one")
         if not file and not module:
             raise ValueError("Must specify either 'file' or 'module'")
-        
+
         # Determine language from file extension or assume Python for modules
         language = "python"  # Default
         if file:
             file_path_obj = Path(file)
             ext = file_path_obj.suffix.lower()
-            if ext == '.py':
-                language = 'python'
-            elif ext in ['.js', '.ts', '.jsx', '.tsx']:
-                language = 'javascript' if ext in ['.js', '.jsx'] else 'typescript'
-            elif ext == '.rs':
-                language = 'rust'
-            elif ext == '.go':
-                language = 'go'
-        
+            if ext == ".py":
+                language = "python"
+            elif ext in [".js", ".ts", ".jsx", ".tsx"]:
+                language = "javascript" if ext in [".js", ".jsx"] else "typescript"
+            elif ext == ".rs":
+                language = "rust"
+            elif ext == ".go":
+                language = "go"
+
         # Resolve paths
         file_path = None
         if file:
-            file_path = Path(file) if Path(file).is_absolute() else self.project_path / file
+            file_path = (
+                Path(file) if Path(file).is_absolute() else self.project_path / file
+            )
             if not file_path.exists():
                 raise RuntimeError(f"File not found: {file_path}")
 
@@ -115,7 +117,7 @@ class DebugService:
         if language in ["python", "javascript", "typescript", "rust", "go"]:
             try:
                 runtime = self.runtime_resolver.resolve_runtime(language, self.config)
-                
+
                 # 🔑 CRITICAL: For symlinks (UV venvs), use the ORIGINAL path, not resolved!
                 # Why: UV venvs work via pyvenv.cfg which is found relative to the symlink
                 # Using the resolved path bypasses the venv structure
@@ -123,7 +125,7 @@ class DebugService:
                     runtime_path = runtime.original_path  # Use .venv/bin/python
                 else:
                     runtime_path = runtime.path  # Use resolved path
-                
+
                 # 📢 EXPLICIT: Log which runtime we're using
                 # This is critical for debugging and transparency
                 display_name = {
@@ -133,7 +135,7 @@ class DebugService:
                     "rust": "Rust",
                     "go": "Go",
                 }.get(language, language)
-                
+
                 icon = {
                     "python": "🐍",
                     "javascript": "📦",
@@ -141,17 +143,19 @@ class DebugService:
                     "rust": "🦀",
                     "go": "🐹",
                 }.get(language, "🔧")
-                
+
                 version_str = f" v{runtime.version}" if runtime.version else ""
-                print(f"\n{icon} Using {display_name} runtime: {runtime_path}{version_str}")
+                print(
+                    f"\n{icon} Using {display_name} runtime: {runtime_path}{version_str}"
+                )
                 print(f"   Source: {runtime.source}")
-                
+
                 # Show symlink info for transparency
                 if runtime.is_symlink and runtime.original_path:
                     print(f"   (Symlink to: {runtime.path})")
-                
+
                 print("   (This is the same runtime used by LSP servers)")
-            
+
             except RuntimeError as e:
                 # Runtime resolution failed
                 raise RuntimeError(
@@ -164,7 +168,9 @@ class DebugService:
         # 🔋 BATTERIES INCLUDED: Ensure debug adapter is available IN THE TARGET RUNTIME
         # CRITICAL: Pass runtime_path so we check/install in the PROJECT's venv, not Otter's!
         try:
-            await ensure_dap_adapter(language, auto_install=True, runtime_path=runtime_path)
+            await ensure_dap_adapter(
+                language, auto_install=True, runtime_path=runtime_path
+            )
         except RuntimeError as e:
             # Provide clear, actionable error message
             raise RuntimeError(
@@ -178,7 +184,7 @@ class DebugService:
         # 🎯 Generate session ID FIRST - Python is the source of truth
         # This ID will be used to track the session in both Python and Lua
         session_id = str(uuid4())
-        
+
         # Start debug session with breakpoints
         # ⚠️  CRITICAL: Breakpoints are now passed to dap_start_session
         # They will be set AFTER the adapter starts but BEFORE execution continues
@@ -195,7 +201,7 @@ class DebugService:
             runtime_path=runtime_path,  # 🔋 Generic runtime path (works for all languages!)
             breakpoints=breakpoints if breakpoints and file_path else None,  # 🎯 NEW!
         )
-        
+
         # Build breakpoint info for response
         bp_infos: List[BreakpointInfo] = []
         if breakpoints and file_path:
@@ -221,8 +227,10 @@ class DebugService:
         # Separate stdout and stderr if available
         stdout = result.get("stdout", "")
         stderr = result.get("stderr", "")
-        combined_output = stdout + stderr if (stdout or stderr) else result.get("output", "")
-        
+        combined_output = (
+            stdout + stderr if (stdout or stderr) else result.get("output", "")
+        )
+
         session = DebugSession(
             session_id=session_id,
             status="running",
@@ -241,7 +249,9 @@ class DebugService:
             launch_args=args,
             launch_env=env,
             launch_cwd=str(self.project_path),  # Always Otter's project
-            diagnostic_info=result.get("diagnostic_info", []),  # Include diagnostic logs
+            diagnostic_info=result.get(
+                "diagnostic_info", []
+            ),  # Include diagnostic logs
         )
 
         # Track session metadata
@@ -407,7 +417,9 @@ class DebugService:
                                     name=var["name"],
                                     value=var["value"],
                                     type=var.get("type"),
-                                    variables_reference=var.get("variables_reference", 0),
+                                    variables_reference=var.get(
+                                        "variables_reference", 0
+                                    ),
                                 )
                                 for var in variables
                             ]
@@ -473,9 +485,7 @@ class DebugService:
         ]
 
     async def get_session_info(
-        self, 
-        session_id: Optional[str] = None,
-        max_output_lines: int = 50
+        self, session_id: Optional[str] = None, max_output_lines: int = 50
     ) -> Optional[DebugSession]:
         """Get debug session information (current or specific session by ID).
 
@@ -515,7 +525,7 @@ class DebugService:
             current_line = frames[0].get("line")
 
         return DebugSession(
-            session_id=session_id,
+            session_id=found_session_id,  # Use actual session ID from DAP, not parameter
             status=info.get("status", "running"),
             file=metadata.get("file", "unknown"),
             configuration=metadata.get("config", "unknown"),
@@ -525,10 +535,10 @@ class DebugService:
 
     async def stop_debug_session(self, session_id: str) -> None:
         """Stop a debug session.
-        
+
         Args:
             session_id: Session ID to stop
-            
+
         Raises:
             RuntimeError: If session not found or stop fails
         """
@@ -544,44 +554,44 @@ class DebugService:
                 raise
 
     async def get_session_status(
-        self, 
-        session_id: str,
-        max_output_lines: int = 50
+        self, session_id: str, max_output_lines: int = 50
     ) -> DebugSession:
         """Get current debug session status with updated output and PID.
-        
+
         This fetches the latest session state including accumulated output
         from the debugged process.
-        
+
         Args:
             session_id: Session ID to query
             max_output_lines: Maximum lines of stdout/stderr to return (default 50, last N lines).
                              Set to 0 for all output, -1 for no output at all.
-            
+
         Returns:
             DebugSession with current status, PID, and accumulated output
-            
+
         Raises:
             RuntimeError: If session not found or client not available
         """
         if not self.nvim_client:
             raise RuntimeError("Neovim client required")
-        
+
         if session_id not in self._active_sessions:
             raise RuntimeError(f"Session {session_id} not found")
-        
+
         # Get current session state from Neovim
-        info = await self.nvim_client.dap_get_session_status(session_id, max_output_lines)
+        info = await self.nvim_client.dap_get_session_status(
+            session_id, max_output_lines
+        )
         if not info:
             raise RuntimeError(f"Could not get status for session {session_id}")
-        
+
         metadata = self._active_sessions[session_id]
-        
+
         # Combine stdout and stderr for backwards compatibility
         stdout = info.get("stdout", "")
         stderr = info.get("stderr", "")
         combined_output = stdout + stderr
-        
+
         return DebugSession(
             session_id=session_id,
             status=info.get("status", "unknown"),
@@ -614,4 +624,3 @@ class DebugService:
             List of session IDs
         """
         return list(self._active_sessions.keys())
-

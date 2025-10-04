@@ -11,6 +11,7 @@ from typing import Dict, List
 @dataclass
 class SymbolLocation:
     """Expected location of a symbol in test code."""
+
     name: str
     symbol_type: str  # class, function, method, variable, etc.
     line: int
@@ -20,21 +21,22 @@ class SymbolLocation:
 @dataclass
 class LanguageTestConfig:
     """Configuration for language-specific tests.
-    
+
     Each configuration corresponds to a physical test project directory:
     - tests/fixtures/projects/python/
     - tests/fixtures/projects/javascript/
     - tests/fixtures/projects/rust/
     """
+
     language: str
     file_extension: str
     lsp_server: str
-    
+
     # Expected symbols for symbol tests
     expected_classes: List[str]
     expected_functions: List[str]
     expected_methods: List[str]
-    
+
     # Symbol locations for navigation tests
     symbol_locations: Dict[str, SymbolLocation]
 
@@ -53,7 +55,7 @@ PYTHON_CONFIG = LanguageTestConfig(
         "create_user": SymbolLocation("create_user", "function", 13, "models"),
         "greet": SymbolLocation("greet", "method", 9, "models"),
         "UserService": SymbolLocation("UserService", "class", 4, "services"),
-    }
+    },
 )
 
 
@@ -68,10 +70,15 @@ JAVASCRIPT_CONFIG = LanguageTestConfig(
     expected_methods=["constructor", "greet", "getUser", "processUser"],
     symbol_locations={
         "User": SymbolLocation("User", "class", 5, "models"),
-        "createUser": SymbolLocation("createUser", "function", 31, "models"),
-        "greet": SymbolLocation("greet", "method", 19, "models"),
+        "create_user": SymbolLocation(
+            "createUser", "function", 28, "models"
+        ),  # Use snake_case key for consistency, but actual function is camelCase
+        "createUser": SymbolLocation(
+            "createUser", "function", 28, "models"
+        ),  # Also keep camelCase for direct lookups
+        "greet": SymbolLocation("greet", "method", 18, "models"),
         "UserService": SymbolLocation("UserService", "class", 6, "services"),
-    }
+    },
 )
 
 
@@ -85,11 +92,11 @@ RUST_CONFIG = LanguageTestConfig(
     expected_functions=["create_user", "main"],
     expected_methods=["new", "greet", "get_user", "process_user"],
     symbol_locations={
-        "User": SymbolLocation("User", "struct", 4, "models"),
-        "create_user": SymbolLocation("create_user", "function", 21, "models"),
-        "greet": SymbolLocation("greet", "method", 15, "models"),
-        "UserService": SymbolLocation("UserService", "struct", 4, "services"),
-    }
+        "User": SymbolLocation("User", "struct", 4, "src/models"),
+        "create_user": SymbolLocation("create_user", "function", 21, "src/models"),
+        "greet": SymbolLocation("greet", "method", 15, "src/models"),
+        "UserService": SymbolLocation("UserService", "struct", 4, "src/services"),
+    },
 )
 
 
@@ -110,9 +117,8 @@ def get_language_config(language: str) -> LanguageTestConfig:
 
 def get_all_languages() -> List[str]:
     """Get list of all supported languages for parameterized testing.
-    
+
     With the new configuration system supporting auto-detection and lazy loading,
     all language tests are now enabled.
     """
     return list(LANGUAGE_CONFIGS.keys())
-

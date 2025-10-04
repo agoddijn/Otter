@@ -3,7 +3,5 @@ name = "test_project"
 version = "0.1.0"
 edition = "2021"
 
-[[bin]]
-name = "main"
-path = "main.rs"
+# Standard binary project - src/main.rs is used by default
 
