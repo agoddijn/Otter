@@ -167,7 +167,7 @@ class TestRuntimeResolver:
         nvmrc.write_text("18.16.0")
         
         # Mock nvm path
-        nvm_node = Path.home() / ".nvm" / "versions" / "node" / "v18.16.0" / "bin" / "node"
+        Path.home() / ".nvm" / "versions" / "node" / "v18.16.0" / "bin" / "node"
         
         with patch("pathlib.Path.exists") as mock_exists:
             mock_exists.return_value = True

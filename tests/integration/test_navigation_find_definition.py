@@ -8,7 +8,6 @@ import pytest
 
 from src.otter.services.navigation import NavigationService
 from tests.fixtures.language_configs import LanguageTestConfig
-from tests.fixtures.lsp_test_fixtures import nvim_client_with_lsp
 
 
 @pytest.mark.asyncio
@@ -28,7 +27,7 @@ class TestFindDefinitionParameterized:
     ):
         """Test finding a class definition across all languages."""
         ext = language_config.file_extension
-        user_loc = language_config.symbol_locations["User"]
+        language_config.symbol_locations["User"]
         
         # Find definition of User when cursor is on it in main file
         # The line number where User is imported/used varies by language
@@ -68,7 +67,7 @@ class TestFindDefinitionParameterized:
     ):
         """Test finding a function definition across all languages."""
         ext = language_config.file_extension
-        func_loc = language_config.symbol_locations["create_user"]
+        language_config.symbol_locations["create_user"]
         
         # Map function name to language-specific naming
         func_name = "create_user" if language_config.language == "python" else \
@@ -136,7 +135,7 @@ class TestFindDefinitionParameterized:
     ):
         """Test finding definition within the same file across all languages."""
         ext = language_config.file_extension
-        user_loc = language_config.symbol_locations["User"]
+        language_config.symbol_locations["User"]
         
         # Find User definition from within models file
         # Look for where User is used in the create_user function
@@ -212,7 +211,7 @@ class TestFindDefinitionParameterized:
     ):
         """Test finding UserService class definition across all languages."""
         ext = language_config.file_extension
-        service_loc = language_config.symbol_locations["UserService"]
+        language_config.symbol_locations["UserService"]
         
         # Line where UserService is imported/used in main
         import_line = 3 if language_config.language == "python" else \

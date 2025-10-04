@@ -95,7 +95,7 @@ class TestFindReferencesParameterized:
     ):
         """Test finding references to a method across all languages."""
         # Test finding the greet method
-        method_loc = language_config.symbol_locations["greet"]
+        language_config.symbol_locations["greet"]
         ext = language_config.file_extension
         
         result = await navigation_service.find_references(

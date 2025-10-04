@@ -5,10 +5,7 @@ Tests that debug adapters are automatically installed and configured,
 especially in venv scenarios.
 """
 
-import asyncio
-import os
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -120,7 +117,7 @@ class TestDAPWithVenv:
                 
                 # This should detect the venv and use it
                 # The key test: Does the DAP config get the venv Python path?
-                session = await server.start_debug_session(
+                await server.start_debug_session(
                     file="main.py",
                     breakpoints=[1]
                 )
@@ -129,7 +126,6 @@ class TestDAPWithVenv:
                 assert mock_nvim_client.dap_start_session.called
                 
                 # Check if venv Python path was passed
-                call_kwargs = mock_nvim_client.dap_start_session.call_args.kwargs
                 # This is what we need to fix - passing the venv Python path!
                 # For now, this test documents the expected behavior
                 
@@ -252,7 +248,6 @@ class TestDAPConfigurationPassing:
                 
                 # THIS IS WHAT WE NEED TO VERIFY:
                 # The call to dap_start_session should include the venv Python path
-                call_kwargs = mock_nvim.dap_start_session.call_args.kwargs
                 
                 # Currently this might fail because we're not passing it!
                 # This test documents what SHOULD happen

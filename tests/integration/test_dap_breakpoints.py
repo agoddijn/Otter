@@ -6,7 +6,6 @@ inspection of program state.
 
 import asyncio
 import pytest
-from pathlib import Path
 
 from otter.neovim.client import NeovimClient
 from otter.services.debugging import DebugService
@@ -48,7 +47,7 @@ print("Done")
     # Cleanup
     try:
         await service.stop_debug_session(session_id="1")
-    except:
+    except Exception:
         pass
     await nvim_client.stop()
 

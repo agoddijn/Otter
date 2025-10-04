@@ -60,7 +60,7 @@ class TestGetHoverInfoParameterized:
         assert hover.line == user_loc.line, \
             f"Expected line {user_loc.line} in hover info"
         assert hover.column == 6, \
-            f"Expected column 6 in hover info"
+            "Expected column 6 in hover info"
 
     async def test_hover_on_method(
         self, navigation_service, language_project_dir, language_config: LanguageTestConfig
@@ -268,9 +268,9 @@ class TestGetHoverInfoParameterized:
         assert hover.type is not None, \
             f"Expected type information for {language_config.language}"
         assert hover.line is not None, \
-            f"Expected line in hover response"
+            "Expected line in hover response"
         assert hover.column is not None, \
-            f"Expected column in hover response"
+            "Expected column in hover response"
 
     @pytest.mark.skip(reason="LSP document symbols may not be indexed yet - flaky with parallel execution")
     async def test_hover_by_symbol_with_line_hint(

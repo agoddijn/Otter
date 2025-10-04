@@ -4,10 +4,8 @@ This module provides robust fixtures for LSP-dependent tests using
 smart LSP readiness polling instead of arbitrary delays.
 """
 
-import asyncio
 import os
 import pytest
-from pathlib import Path
 
 from otter.neovim.client import NeovimClient
 from otter.neovim.lsp_readiness import wait_for_all_lsp_ready

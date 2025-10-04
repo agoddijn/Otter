@@ -5,7 +5,6 @@ editing it in a buffer, and saving it to disk.
 """
 
 import pytest
-from pathlib import Path
 
 from otter.neovim.client import NeovimClient
 from otter.services.editing import EditingService
@@ -225,7 +224,7 @@ async def test_create_new_file_discard_changes(editing_service, tmp_path):
     assert result.success
     
     # Discard changes (for new files, this is a no-op since no disk version exists)
-    discard_result = await editing_service.discard_buffer(new_file)
+    await editing_service.discard_buffer(new_file)
     # Discard might fail or succeed depending on implementation
     # The key is that the file shouldn't be saved to disk
     

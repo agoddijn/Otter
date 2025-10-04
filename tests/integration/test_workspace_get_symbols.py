@@ -40,9 +40,9 @@ class TestGetSymbolsParameterized:
         result = await workspace_service.get_symbols(str(language_project_dir / f"models{ext}"))
 
         # Check result structure
-        assert result.file.endswith(f"models{ext}"), f"File path should be in result"
-        assert result.total_count > 0, f"Should have total count"
-        assert result.language is not None, f"Should detect language"
+        assert result.file.endswith(f"models{ext}"), "File path should be in result"
+        assert result.total_count > 0, "Should have total count"
+        assert result.language is not None, "Should detect language"
         
         symbols = result.symbols
         # Should have classes, functions, and possibly module-level items
@@ -227,7 +227,7 @@ class TestGetSymbolsParameterized:
 
         result = await workspace_service.get_symbols(str(empty_file))
         assert result.symbols == [], f"Empty file should return empty list in {language_config.language}"
-        assert result.total_count == 0, f"Empty file should have 0 total count"
+        assert result.total_count == 0, "Empty file should have 0 total count"
 
     async def test_file_not_found_raises_error(
         self, workspace_service, language_project_dir, language_config: LanguageTestConfig

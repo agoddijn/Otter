@@ -8,8 +8,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pynvim  # type: ignore
 
-from ..config import load_config, get_effective_languages
 from ..bootstrap import check_and_install_lsp_servers
+from ..config import get_effective_languages, load_config
 
 
 class NeovimClient:
@@ -32,7 +32,7 @@ class NeovimClient:
         self._buffers: Dict[str, int] = {}  # filepath -> buffer number
         self._lsp_clients: Dict[str, Any] = {}  # filetype -> LSP client info
         self._started = False
-        
+
         # Load configuration
         self.config = load_config(self.project_path)
         self.enabled_languages = get_effective_languages(self.config)
@@ -48,7 +48,11 @@ class NeovimClient:
             return
 
         # Bootstrap: Check and install missing LSP servers
-        if self.config.lsp.enabled and self.config.lsp.auto_install and self.enabled_languages:
+        if (
+            self.config.lsp.enabled
+            and self.config.lsp.auto_install
+            and self.enabled_languages
+        ):
             await check_and_install_lsp_servers(
                 self.enabled_languages,
                 self.config.lsp.language_configs,
@@ -61,7 +65,7 @@ class NeovimClient:
 
         if not init_lua.exists():
             raise FileNotFoundError(f"Neovim config not found: {init_lua}")
-        
+
         # Generate runtime config file BEFORE starting Neovim
         # This eliminates the race condition
         self._generate_runtime_config(config_dir)
@@ -124,67 +128,71 @@ class NeovimClient:
 
     def _generate_runtime_config(self, config_dir: Path) -> None:
         """Generate runtime_config.lua with all settings.
-        
+
         This file is created BEFORE Neovim starts, eliminating race conditions.
         It contains all configuration needed for LSP, DAP, and plugins.
         """
         # Build enabled languages dict
         enabled_langs = {lang: True for lang in self.enabled_languages}
-        
+
         # Build LSP server configs
         lsp_servers = {}
         for lang in self.enabled_languages:
             if lang in self.config.lsp.language_configs:
                 lang_config = self.config.lsp.language_configs[lang]
                 lsp_servers[lang] = {
-                    'enabled': lang_config.enabled,
-                    'server': lang_config.server,
-                    'python_path': self.config.resolve_path(lang_config.python_path) if lang_config.python_path else None,
-                    'settings': lang_config.settings or {},
+                    "enabled": lang_config.enabled,
+                    "server": lang_config.server,
+                    "python_path": self.config.resolve_path(lang_config.python_path)
+                    if lang_config.python_path
+                    else None,
+                    "settings": lang_config.settings or {},
                 }
             else:
                 # Use defaults
                 lsp_servers[lang] = {
-                    'enabled': True,
-                    'server': self._get_default_server(lang),
-                    'python_path': None,
-                    'settings': {},
+                    "enabled": True,
+                    "server": self._get_default_server(lang),
+                    "python_path": None,
+                    "settings": {},
                 }
-        
+
         # Build DAP adapter configs
         dap_adapters = {}
         for lang in self.enabled_languages:
             if lang in self.config.dap.language_configs:
                 lang_config = self.config.dap.language_configs[lang]
                 dap_adapters[lang] = {
-                    'enabled': lang_config.enabled,
-                    'python_path': self.config.resolve_path(lang_config.python_path) if hasattr(lang_config, 'python_path') and lang_config.python_path else None,
-                    'adapter': getattr(lang_config, 'adapter', None),
-                    'configurations': lang_config.configurations or [],
+                    "enabled": lang_config.enabled,
+                    "python_path": self.config.resolve_path(lang_config.python_path)
+                    if hasattr(lang_config, "python_path") and lang_config.python_path
+                    else None,
+                    "adapter": getattr(lang_config, "adapter", None),
+                    "configurations": lang_config.configurations or [],
                 }
             else:
                 # Use defaults - enable DAP for this language
                 dap_adapters[lang] = {
-                    'enabled': True,
-                    'python_path': None,
-                    'adapter': None,
-                    'configurations': [],
+                    "enabled": True,
+                    "python_path": None,
+                    "adapter": None,
+                    "configurations": [],
                 }
-        
+
         # Build config structure
         runtime_config = {
-            'enabled_languages': enabled_langs,
-            'lsp': {
-                'enabled': self.config.lsp.enabled,
-                'servers': lsp_servers,
+            "enabled_languages": enabled_langs,
+            "lsp": {
+                "enabled": self.config.lsp.enabled,
+                "servers": lsp_servers,
             },
-            'dap': {
-                'enabled': self.config.dap.enabled,
-                'adapters': dap_adapters,
+            "dap": {
+                "enabled": self.config.dap.enabled,
+                "adapters": dap_adapters,
             },
-            'test_mode': os.getenv('OTTER_TEST_MODE') == '1',
+            "test_mode": os.getenv("OTTER_TEST_MODE") == "1",
         }
-        
+
         # Generate Lua code
         lua_code = f"""-- Auto-generated by Otter (DO NOT EDIT MANUALLY)
 -- This file is regenerated each time Otter starts
@@ -198,23 +206,23 @@ function _G.otter_debug_config()
     print(vim.inspect(_G.otter_runtime_config))
 end
 """
-        
+
         # Write to runtime_config.lua
         runtime_config_path = config_dir / "runtime_config.lua"
         runtime_config_path.write_text(lua_code)
-    
+
     def _get_default_server(self, lang: str) -> str:
         """Get default LSP server name for a language."""
         defaults = {
-            'python': 'pyright',
-            'javascript': 'tsserver',
-            'typescript': 'tsserver',
-            'rust': 'rust_analyzer',
-            'go': 'gopls',
-            'lua': 'lua_ls',
+            "python": "pyright",
+            "javascript": "tsserver",
+            "typescript": "tsserver",
+            "rust": "rust_analyzer",
+            "go": "gopls",
+            "lua": "lua_ls",
         }
         return defaults.get(lang, lang)
-    
+
     async def _wait_for_config(self, timeout: float = 5.0) -> None:
         """Wait for Neovim config to finish loading."""
         loop = asyncio.get_event_loop()
@@ -253,89 +261,95 @@ end
         """Send Otter configuration to Neovim."""
         if not self.nvim:
             return
-        
+
         loop = asyncio.get_event_loop()
-        
+
         try:
             # Prepare config data to send to Lua
             enabled_langs = {lang: True for lang in self.enabled_languages}
-            
+
             # Build config dict matching Lua expectations
             config_data = {
-                'enabled_languages': enabled_langs,
-                'lsp': {
-                    'enabled': self.config.lsp.enabled,
-                    'lazy_load': self.config.lsp.lazy_load,
-                    'timeout_ms': self.config.lsp.timeout_ms,
-                    'language_configs': {}
+                "enabled_languages": enabled_langs,
+                "lsp": {
+                    "enabled": self.config.lsp.enabled,
+                    "lazy_load": self.config.lsp.lazy_load,
+                    "timeout_ms": self.config.lsp.timeout_ms,
+                    "language_configs": {},
                 },
-                'dap': {
-                    'enabled': self.config.dap.enabled,
-                    'lazy_load': self.config.dap.lazy_load,
-                    'language_configs': {}
+                "dap": {
+                    "enabled": self.config.dap.enabled,
+                    "lazy_load": self.config.dap.lazy_load,
+                    "language_configs": {},
                 },
-                'plugins': {
-                    'treesitter_config': {
-                        'ensure_installed': self.config.plugins.treesitter_ensure_installed,
-                        'auto_install': self.config.plugins.treesitter_auto_install,
+                "plugins": {
+                    "treesitter_config": {
+                        "ensure_installed": self.config.plugins.treesitter_ensure_installed,
+                        "auto_install": self.config.plugins.treesitter_auto_install,
                     }
-                }
+                },
             }
-            
+
             # Add language-specific LSP configs
             for lang, lang_config in self.config.lsp.language_configs.items():
-                config_data['lsp']['language_configs'][lang] = {
-                    'enabled': lang_config.enabled,
-                    'server': lang_config.server,
-                    'python_path': self.config.resolve_path(lang_config.python_path) if lang_config.python_path else None,
-                    'node_path': lang_config.node_path,
-                    'settings': lang_config.settings,
+                config_data["lsp"]["language_configs"][lang] = {
+                    "enabled": lang_config.enabled,
+                    "server": lang_config.server,
+                    "python_path": self.config.resolve_path(lang_config.python_path)
+                    if lang_config.python_path
+                    else None,
+                    "node_path": lang_config.node_path,
+                    "settings": lang_config.settings,
                 }
-            
+
             # Add language-specific DAP configs
             for lang, lang_config in self.config.dap.language_configs.items():
-                config_data['dap']['language_configs'][lang] = {
-                    'enabled': lang_config.enabled,
-                    'adapter': lang_config.adapter,
-                    'python_path': self.config.resolve_path(lang_config.python_path) if lang_config.python_path else None,
-                    'configurations': lang_config.configurations,
+                config_data["dap"]["language_configs"][lang] = {
+                    "enabled": lang_config.enabled,
+                    "adapter": lang_config.adapter,
+                    "python_path": self.config.resolve_path(lang_config.python_path)
+                    if lang_config.python_path
+                    else None,
+                    "configurations": lang_config.configurations,
                 }
-            
+
             # Send config to Neovim's global scope
             await loop.run_in_executor(
                 None,
-                lambda: self.nvim.lua.exec(f"_G.otter_config = {self._lua_repr(config_data)}")
+                lambda: self.nvim.lua.exec(
+                    f"_G.otter_config = {self._lua_repr(config_data)}"
+                )
                 if self.nvim
-                else None
+                else None,
             )
         except Exception:
             # Config sending is best-effort, don't fail startup
             pass
-    
+
     def _lua_repr(self, obj: Any) -> str:
         """Convert Python object to Lua table representation."""
         if obj is None:
-            return 'nil'
+            return "nil"
         elif isinstance(obj, bool):
-            return 'true' if obj else 'false'
+            return "true" if obj else "false"
         elif isinstance(obj, (int, float)):
             return str(obj)
         elif isinstance(obj, str):
             # Escape quotes and backslashes
-            escaped = obj.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
+            escaped = obj.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
             return f'"{escaped}"'
         elif isinstance(obj, list):
             items = [self._lua_repr(item) for item in obj]
-            return '{' + ', '.join(items) + '}'
+            return "{" + ", ".join(items) + "}"
         elif isinstance(obj, dict):
             items = []
             for key, value in obj.items():
                 # Use bracket notation for string keys
-                lua_key = f'["{key}"]' if isinstance(key, str) else f'[{key}]'
-                items.append(f'{lua_key} = {self._lua_repr(value)}')
-            return '{' + ', '.join(items) + '}'
+                lua_key = f'["{key}"]' if isinstance(key, str) else f"[{key}]"
+                items.append(f"{lua_key} = {self._lua_repr(value)}")
+            return "{" + ", ".join(items) + "}"
         else:
-            return 'nil'
+            return "nil"
 
     async def _initialize_lsp(self) -> None:
         """Initialize LSP servers for the project."""
@@ -431,7 +445,7 @@ end
         # Check if already open (check this BEFORE checking if file exists)
         if filepath_str in self._buffers:
             return self._buffers[filepath_str]
-        
+
         # Check if file exists
         if not file_path.exists():
             if not create_if_missing:
@@ -528,63 +542,65 @@ end
             file_path = Path(filepath)
         else:
             file_path = self.project_path / filepath
-        
+
         file_path = file_path.resolve()
         filepath_str = str(file_path)
-        
+
         # Check if file is in our buffers cache
         is_open = filepath_str in self._buffers
-        
+
         if not is_open:
             # File not open, return basic info
             if file_path.exists():
-                with open(file_path, 'r') as f:
+                with open(file_path, "r") as f:
                     lines = f.readlines()
                 line_count = len(lines)
             else:
                 line_count = 0
-            
+
             return {
                 "is_open": False,
                 "is_modified": False,
                 "line_count": line_count,
-                "language": file_path.suffix.lstrip('.') if file_path.suffix else "unknown"
+                "language": file_path.suffix.lstrip(".")
+                if file_path.suffix
+                else "unknown",
             }
-        
+
         # File is open, get buffer info from Neovim
         buf_num = self._buffers[filepath_str]
-        
+
         if not self.nvim:
             raise RuntimeError("Neovim not connected")
-        
+
         loop = asyncio.get_event_loop()
-        
+
         def _get_info():
             if not self.nvim:
                 raise RuntimeError("Neovim not connected")
-            
+
             # Find the buffer
             buf = None
             for b in self.nvim.buffers:
                 if b.number == buf_num:
                     buf = b
                     break
-            
+
             if not buf:
                 raise RuntimeError(f"Buffer {buf_num} not found")
-            
+
             # Get buffer info
-            is_modified = buf.options.get('modified', False)
+            is_modified = buf.options.get("modified", False)
             line_count = len(buf)
-            filetype = buf.options.get('filetype', 'unknown')
-            
+            filetype = buf.options.get("filetype", "unknown")
+
             return {
                 "is_open": True,
                 "is_modified": is_modified,
                 "line_count": line_count,
-                "language": filetype
+                "language": filetype,
             }
-        
+
         info = await loop.run_in_executor(None, _get_info)
         return info
 
@@ -608,54 +624,56 @@ end
         """
         # Open file if not already open
         buf_num = await self.open_file(filepath)
-        
+
         if not self.nvim:
             raise RuntimeError("Neovim not connected")
-        
+
         loop = asyncio.get_event_loop()
-        
+
         def _apply_edits():
             if not self.nvim:
                 raise RuntimeError("Neovim not connected")
-            
+
             # Find the buffer
             buf = None
             for b in self.nvim.buffers:
                 if b.number == buf_num:
                     buf = b
                     break
-            
+
             if not buf:
                 raise RuntimeError(f"Buffer {buf_num} not found")
-            
+
             # Sort edits by line number (descending) to avoid offset issues
             sorted_edits = sorted(edits, key=lambda e: e[0], reverse=True)
-            
+
             # Apply each edit
             for start_line, end_line, new_lines in sorted_edits:
                 # Convert to 0-indexed
                 start_idx = start_line - 1
                 end_idx = end_line  # nvim_buf_set_lines is exclusive on end
-                
+
                 # Validate line range
                 if start_idx < 0:
                     raise ValueError(f"Invalid start line: {start_line} (must be >= 1)")
                 if end_idx > len(buf):
-                    raise ValueError(f"Invalid end line: {end_line} (buffer has {len(buf)} lines)")
-                
+                    raise ValueError(
+                        f"Invalid end line: {end_line} (buffer has {len(buf)} lines)"
+                    )
+
                 # Set lines in buffer
                 buf[start_idx:end_idx] = new_lines
-            
+
             # Get updated buffer info
-            is_modified = buf.options.get('modified', False)
+            is_modified = buf.options.get("modified", False)
             line_count = len(buf)
-            
+
             return {
                 "success": True,
                 "line_count": line_count,
-                "is_modified": is_modified
+                "is_modified": is_modified,
             }
-        
+
         result = await loop.run_in_executor(None, _apply_edits)
         return result
 
@@ -676,10 +694,10 @@ end
             file_path = Path(filepath)
         else:
             file_path = self.project_path / filepath
-        
+
         file_path = file_path.resolve()
         filepath_str = str(file_path)
-        
+
         # Check if file is open
         if filepath_str not in self._buffers:
             # File not open, nothing to save
@@ -687,52 +705,52 @@ end
                 "success": False,
                 "is_modified": False,
                 "file": filepath_str,
-                "error": "Buffer not open"
+                "error": "Buffer not open",
             }
-        
+
         buf_num = self._buffers[filepath_str]
-        
+
         if not self.nvim:
             raise RuntimeError("Neovim not connected")
-        
+
         loop = asyncio.get_event_loop()
-        
+
         def _save_buffer():
             if not self.nvim:
                 raise RuntimeError("Neovim not connected")
-            
+
             # Find the buffer
             buf = None
             for b in self.nvim.buffers:
                 if b.number == buf_num:
                     buf = b
                     break
-            
+
             if not buf:
                 raise RuntimeError(f"Buffer {buf_num} not found")
-            
+
             # Execute write command for this buffer
             # Use :write to save the buffer
             try:
-                self.nvim.command(f'buffer {buf_num}')
-                self.nvim.command('write')
-                
+                self.nvim.command(f"buffer {buf_num}")
+                self.nvim.command("write")
+
                 # Check if buffer is still modified (should be False after save)
-                is_modified = buf.options.get('modified', False)
-                
+                is_modified = buf.options.get("modified", False)
+
                 return {
                     "success": True,
                     "is_modified": is_modified,
-                    "file": filepath_str
+                    "file": filepath_str,
                 }
             except Exception as e:
                 return {
                     "success": False,
-                    "is_modified": buf.options.get('modified', False),
+                    "is_modified": buf.options.get("modified", False),
                     "file": filepath_str,
-                    "error": str(e)
+                    "error": str(e),
                 }
-        
+
         result = await loop.run_in_executor(None, _save_buffer)
         return result
 
@@ -753,61 +771,61 @@ end
             file_path = Path(filepath)
         else:
             file_path = self.project_path / filepath
-        
+
         file_path = file_path.resolve()
         filepath_str = str(file_path)
-        
+
         # Check if file is open
         if filepath_str not in self._buffers:
             return {
                 "success": False,
                 "is_modified": False,
                 "file": filepath_str,
-                "error": "Buffer not open"
+                "error": "Buffer not open",
             }
-        
+
         buf_num = self._buffers[filepath_str]
-        
+
         if not self.nvim:
             raise RuntimeError("Neovim not connected")
-        
+
         loop = asyncio.get_event_loop()
-        
+
         def _discard_buffer():
             if not self.nvim:
                 raise RuntimeError("Neovim not connected")
-            
+
             # Find the buffer
             buf = None
             for b in self.nvim.buffers:
                 if b.number == buf_num:
                     buf = b
                     break
-            
+
             if not buf:
                 raise RuntimeError(f"Buffer {buf_num} not found")
-            
+
             # Reload buffer from disk using :edit!
             try:
-                self.nvim.command(f'buffer {buf_num}')
-                self.nvim.command('edit!')  # Force reload from disk
-                
+                self.nvim.command(f"buffer {buf_num}")
+                self.nvim.command("edit!")  # Force reload from disk
+
                 # Check modified status (should be False after reload)
-                is_modified = buf.options.get('modified', False)
-                
+                is_modified = buf.options.get("modified", False)
+
                 return {
                     "success": True,
                     "is_modified": is_modified,
-                    "file": filepath_str
+                    "file": filepath_str,
                 }
             except Exception as e:
                 return {
                     "success": False,
-                    "is_modified": buf.options.get('modified', False),
+                    "is_modified": buf.options.get("modified", False),
                     "file": filepath_str,
-                    "error": str(e)
+                    "error": str(e),
                 }
-        
+
         result = await loop.run_in_executor(None, _discard_buffer)
         return result
 
@@ -825,39 +843,39 @@ end
             file_path = Path(filepath)
         else:
             file_path = self.project_path / filepath
-        
+
         file_path = file_path.resolve()
         filepath_str = str(file_path)
-        
+
         # Check if file is open
         if filepath_str not in self._buffers:
             return None
-        
+
         buf_num = self._buffers[filepath_str]
-        
+
         if not self.nvim:
             raise RuntimeError("Neovim not connected")
-        
+
         loop = asyncio.get_event_loop()
-        
+
         def _get_content():
             if not self.nvim:
                 raise RuntimeError("Neovim not connected")
-            
+
             # Find the buffer
             buf = None
             for b in self.nvim.buffers:
                 if b.number == buf_num:
                     buf = b
                     break
-            
+
             if not buf:
                 return None
-            
+
             # Get buffer lines and join
             lines = buf[:]
             return "\n".join(lines)
-        
+
         return await loop.run_in_executor(None, _get_content)
 
     async def get_buffer_diff(self, filepath: str) -> Dict[str, Any]:
@@ -877,93 +895,88 @@ end
             file_path = Path(filepath)
         else:
             file_path = self.project_path / filepath
-        
+
         file_path = file_path.resolve()
         filepath_str = str(file_path)
-        
+
         # Check if file is open
         if filepath_str not in self._buffers:
             return {
                 "has_changes": False,
                 "file": filepath_str,
-                "error": "Buffer not open"
+                "error": "Buffer not open",
             }
-        
+
         buf_num = self._buffers[filepath_str]
-        
+
         if not self.nvim:
             raise RuntimeError("Neovim not connected")
-        
+
         loop = asyncio.get_event_loop()
-        
+
         def _get_diff():
             if not self.nvim:
                 raise RuntimeError("Neovim not connected")
-            
+
             # Find the buffer
             buf = None
             for b in self.nvim.buffers:
                 if b.number == buf_num:
                     buf = b
                     break
-            
+
             if not buf:
                 raise RuntimeError(f"Buffer {buf_num} not found")
-            
+
             try:
                 # Get buffer content
                 buffer_lines = buf[:]
-                
+
                 # Read disk content
                 if not file_path.exists():
                     # New file not yet saved
                     import difflib
+
                     diff = difflib.unified_diff(
                         [],
                         buffer_lines,
                         fromfile=f"a/{filepath_str}",
                         tofile=f"b/{filepath_str}",
-                        lineterm=""
+                        lineterm="",
                     )
                     return {
                         "has_changes": True,
                         "diff": "\n".join(diff),
-                        "file": filepath_str
+                        "file": filepath_str,
                     }
-                
-                with open(file_path, 'r') as f:
+
+                with open(file_path, "r") as f:
                     disk_lines = f.read().splitlines()
-                
+
                 # Compare
                 if buffer_lines == disk_lines:
-                    return {
-                        "has_changes": False,
-                        "file": filepath_str
-                    }
-                
+                    return {"has_changes": False, "file": filepath_str}
+
                 # Generate unified diff
                 import difflib
+
                 diff = difflib.unified_diff(
                     disk_lines,
                     buffer_lines,
                     fromfile=f"a/{filepath_str}",
                     tofile=f"b/{filepath_str}",
-                    lineterm=""
+                    lineterm="",
                 )
-                
+
                 return {
                     "has_changes": True,
                     "diff": "\n".join(diff),
-                    "file": filepath_str
-                }
-            
-            except Exception as e:
-                return {
-                    "has_changes": False,
                     "file": filepath_str,
-                    "error": str(e)
                 }
-        
+
+            except Exception as e:
+                return {"has_changes": False, "file": filepath_str, "error": str(e)}
+
         result = await loop.run_in_executor(None, _get_diff)
         return result
 
@@ -1483,55 +1496,61 @@ end
         # Determine filetype from file extension or default to python for modules
         filetype = "python"  # Default for modules
         buf_num = None
-        
+
         if filepath:
             buf_num = await self.open_file(filepath)
             await asyncio.sleep(0.5)  # Wait for DAP to be ready
-            
+
             # Get filetype from buffer
             loop = asyncio.get_event_loop()
             try:
                 filetype = await loop.run_in_executor(
                     None,
-                    lambda: self.nvim.eval(f'getbufvar({buf_num}, "&filetype")') if self.nvim else "python"
+                    lambda: self.nvim.eval(f'getbufvar({buf_num}, "&filetype")')
+                    if self.nvim
+                    else "python",
                 )
             except Exception:
                 # Fallback: detect from extension
-                if filepath.endswith('.py'):
-                    filetype = 'python'
-                elif filepath.endswith(('.js', '.ts', '.jsx', '.tsx')):
-                    filetype = 'javascript'
-                elif filepath.endswith('.rs'):
-                    filetype = 'rust'
-                elif filepath.endswith('.go'):
-                    filetype = 'go'
+                if filepath.endswith(".py"):
+                    filetype = "python"
+                elif filepath.endswith((".js", ".ts", ".jsx", ".tsx")):
+                    filetype = "javascript"
+                elif filepath.endswith(".rs"):
+                    filetype = "rust"
+                elif filepath.endswith(".go"):
+                    filetype = "go"
 
         # Build configuration dict
         # Escape strings for Lua
         def lua_escape(s: str) -> str:
-            return s.replace('\\', '\\\\').replace("'", "\\'").replace('\n', '\\n')
-        
+            return s.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
+
         # Build args list for Lua
         args_lua = "nil"
         if args:
             escaped_args = [f"'{lua_escape(arg)}'" for arg in args]
             args_lua = "{" + ", ".join(escaped_args) + "}"
-        
+
         # Build env dict for Lua
         env_lua = "nil"
         if env:
-            env_pairs = [f"['{lua_escape(k)}'] = '{lua_escape(v)}'" for k, v in env.items()]
+            env_pairs = [
+                f"['{lua_escape(k)}'] = '{lua_escape(v)}'" for k, v in env.items()
+            ]
             env_lua = "{" + ", ".join(env_pairs) + "}"
-        
+
         # Build config
         cwd_lua = f"'{lua_escape(cwd)}'" if cwd else "nil"
         module_lua = f"'{lua_escape(module)}'" if module else "nil"
         filepath_lua = f"'{lua_escape(filepath)}'" if filepath else "nil"
-        
+
         # Build breakpoints list for Lua
         breakpoint_lines_lua = "nil"
         if breakpoints and filepath:
-            breakpoint_lines_lua = "{" + ", ".join(str(line) for line in breakpoints) + "}"
+            breakpoint_lines_lua = (
+                "{" + ", ".join(str(line) for line in breakpoints) + "}"
+            )
 
         lua_code = f"""
         local dap = require('dap')
@@ -1817,7 +1836,10 @@ end
             return {"error": f"Exception starting debug session: {str(e)}"}
 
     async def dap_set_breakpoints(
-        self, filepath: str, lines: List[int], conditions: Optional[Dict[int, str]] = None
+        self,
+        filepath: str,
+        lines: List[int],
+        conditions: Optional[Dict[int, str]] = None,
     ) -> Optional[List[Dict[str, Any]]]:
         """Set breakpoints in a file.
 
@@ -2074,7 +2096,7 @@ end
             if not result:
                 return []
             # Check if result contains an error
-            if isinstance(result, dict) and 'error' in result:
+            if isinstance(result, dict) and "error" in result:
                 # Silently return empty list - session may have ended
                 return []
             return result
@@ -2129,7 +2151,9 @@ end
         except Exception:
             return []
 
-    async def dap_get_variables(self, variables_reference: int) -> Optional[List[Dict[str, Any]]]:
+    async def dap_get_variables(
+        self, variables_reference: int
+    ) -> Optional[List[Dict[str, Any]]]:
         """Get variables for a scope or parent variable.
 
         Args:
@@ -2260,20 +2284,18 @@ end
             return None
 
     async def dap_get_session_status(
-        self, 
-        session_id: str, 
-        max_output_lines: int = 50
+        self, session_id: str, max_output_lines: int = 50
     ) -> Optional[Dict[str, Any]]:
         """Get current debug session status with accumulated output and PID.
-        
+
         This queries the running DAP session for updated information including
         output that has been captured since the session started.
-        
+
         Args:
             session_id: Session ID to query
             max_output_lines: Maximum lines of stdout/stderr to return (default 50, last N lines).
                              Set to 0 for all output, -1 for no output.
-            
+
         Returns:
             Dict with status, pid, output, etc. or None if session not found
         """

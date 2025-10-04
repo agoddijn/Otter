@@ -8,7 +8,6 @@ These tests verify that debug sessions properly capture:
 
 import asyncio
 import pytest
-from pathlib import Path
 
 from otter.neovim.client import NeovimClient
 from otter.services.debugging import DebugService
@@ -269,7 +268,7 @@ raise RuntimeError("Intentional crash for testing")
     # Cleanup (session might already be stopped)
     try:
         await service.stop_debug_session(session.session_id)
-    except:
+    except Exception:
         pass  # Session may have already terminated
 
 

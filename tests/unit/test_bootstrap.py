@@ -1,6 +1,5 @@
 """Unit tests for LSP bootstrapping."""
 
-import pytest
 
 from otter.bootstrap.lsp_installer import (
     LSPServerStatus,
